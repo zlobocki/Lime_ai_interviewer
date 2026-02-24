@@ -85,3 +85,4 @@ export async function GET() {
 | Date | Changes |
 |------|---------|
 | Initial | Template created with base setup |
+| 2026-02-24 | Built LimeSurvey 6.x AI Interview plugin (AIInterview/) — custom question type with OpenAI ChatGPT integration, server-side API proxy, chat UI, plain-text transcript storage. Packaged as AIInterview.zip. |

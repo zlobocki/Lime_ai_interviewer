@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config>
+    <metadata>
+        <name>AIInterview</name>
+        <type>plugin</type>
+        <creationDate>2026-02-24</creationDate>
+        <lastUpdate>2026-02-24</lastUpdate>
+        <author>LimeSurvey AI Interview Plugin</author>
+        <authorUrl>https://github.com/</authorUrl>
+        <supportUrl>https://github.com/</supportUrl>
+        <version>1.0.0</version>
+        <license>GPL v2</license>
+        <description>
+            <![CDATA[
+            Adds an "AI Interview" question type to LimeSurvey.
+            Respondents engage in a conversational AI-driven interview powered by OpenAI ChatGPT.
+            The full conversation is saved as the question answer.
+            Requires an OpenAI API key configured in the plugin settings.
+            ]]>
+        </description>
+    </metadata>
+    <compatibility>
+        <version>6.0</version>
+    </compatibility>
+    <settings>
+        <setting>
+            <name>openai_api_key</name>
+            <type>string</type>
+            <label>OpenAI API Key</label>
+            <help>Your OpenAI API key. This is stored securely on the server and never exposed to survey respondents.</help>
+            <default></default>
+        </setting>
+        <setting>
+            <name>openai_model</name>
+            <type>string</type>
+            <label>OpenAI Model</label>
+            <help>The OpenAI model to use (e.g. gpt-4o, gpt-4-turbo, gpt-3.5-turbo).</help>
+            <default>gpt-4o</default>
+        </setting>
+    </settings>
+</config>
