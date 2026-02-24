@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config>
+    <metadata>
+        <name>AIInterview</name>
+        <type>question_theme</type>
+        <title>AI Interview</title>
+        <creationDate>2026-02-24</creationDate>
+        <lastUpdate>2026-02-24</lastUpdate>
+        <author>LimeSurvey AI Interview Plugin</author>
+        <version>1.0.0</version>
+        <license>GPL v2</license>
+        <description>
+            <![CDATA[An AI-powered conversational interview question type. Respondents chat with an AI interviewer and the full transcript is saved as the answer.]]>
+        </description>
+        <question_type>Z</question_type>
+        <group>Text</group>
+        <subquestions>0</subquestions>
+        <answerscales>0</answerscales>
+        <hasdefaultvalues>0</hasdefaultvalues>
+        <assessable>0</assessable>
+        <image>survey/questions/answer/AIInterview/assets/icon.png</image>
+    </metadata>
+    <engine>
+        <reloadaftersave>false</reloadaftersave>
+    </engine>
+    <compatibility>
+        <version>6.0</version>
+    </compatibility>
+</config>

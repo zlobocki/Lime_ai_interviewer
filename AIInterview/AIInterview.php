@@ -48,7 +48,7 @@ class AIInterview extends PluginBase
      */
     public function init()
     {
-        // Question type registration (LimeSurvey 6.x)
+        // Question type registration (LimeSurvey 6.x — multiple hooks for compatibility)
         $this->subscribe('listQuestionPlugins');
         $this->subscribe('newQuestionAttributes');
         $this->subscribe('beforeQuestionRender');
@@ -64,6 +64,8 @@ class AIInterview extends PluginBase
     /**
      * Register this plugin as providing a custom question type.
      * LimeSurvey 6.x fires this event to discover available question types.
+     *
+     * Uses type code 'Z' (unused by LimeSurvey core) to avoid conflicts.
      */
     public function listQuestionPlugins()
     {
@@ -73,7 +75,7 @@ class AIInterview extends PluginBase
                 'name'        => gT('AI Interview'),
                 'description' => gT('An AI-powered conversational interview. The respondent chats with an AI interviewer and the full transcript is saved as the answer.'),
                 'class'       => 'AIInterview',
-                'type'        => 'I',
+                'type'        => 'Z',
             ],
         ]);
     }
@@ -87,7 +89,7 @@ class AIInterview extends PluginBase
 
         $questionAttributes = [
             'ai_interview_prompt' => [
-                'types'    => 'I',
+                'types'    => 'Z',
                 'category' => gT('AI Interview Settings'),
                 'sortorder'=> 1,
                 'inputtype'=> 'textarea',
@@ -101,7 +103,7 @@ class AIInterview extends PluginBase
                 'caption'  => gT('AI Interviewer Prompt / Instructions'),
             ],
             'ai_interview_max_tokens' => [
-                'types'    => 'I',
+                'types'    => 'Z',
                 'category' => gT('AI Interview Settings'),
                 'sortorder'=> 2,
                 'inputtype'=> 'integer',
@@ -113,7 +115,7 @@ class AIInterview extends PluginBase
                 'caption'  => gT('Maximum Token Budget'),
             ],
             'ai_interview_mandatory' => [
-                'types'    => 'I',
+                'types'    => 'Z',
                 'category' => gT('AI Interview Settings'),
                 'sortorder'=> 3,
                 'inputtype'=> 'singleselect',
@@ -147,7 +149,7 @@ class AIInterview extends PluginBase
         // Only handle our custom question type
         // LimeSurvey 6.x uses the plugin class name as the type for plugin question types
         $type = $event->get('type');
-        if ($type !== 'AIInterview' && $type !== 'I') {
+        if ($type !== 'AIInterview' && $type !== 'Z') {
             return;
         }
 

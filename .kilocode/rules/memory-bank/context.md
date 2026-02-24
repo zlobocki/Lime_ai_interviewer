@@ -86,3 +86,4 @@ export async function GET() {
 |------|---------|
 | Initial | Template created with base setup |
 | 2026-02-24 | Built LimeSurvey 6.x AI Interview plugin (AIInterview/) — custom question type with OpenAI ChatGPT integration, server-side API proxy, chat UI, plain-text transcript storage. Packaged as AIInterview.zip. |
+| 2026-02-24 | Fixed question type registration: changed type code from 'I' (conflicts with LimeSurvey built-in Date type) to 'Z'; added question_themes/AIInterview/config.xml required by LimeSurvey 6.x for question types to appear in the editor UI. Repackaged AIInterview.zip. |
