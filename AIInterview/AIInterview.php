@@ -6,6 +6,13 @@
  * Respondents engage in a conversational AI-driven interview powered by OpenAI.
  * The full conversation is saved as a plain-text transcript.
  *
+ * How it works (LimeSurvey 6.x):
+ *   - The plugin registers a question theme that extends the Long Free Text (T) type.
+ *   - On activation, the theme is copied to upload/themes/question/ and imported
+ *     into the question_themes database table so it appears in the question type selector.
+ *   - The theme's Twig template replaces the standard textarea with the AI chat widget.
+ *   - The plugin provides a server-side AJAX proxy for OpenAI (API key never exposed).
+ *
  * Installation:
  *   1. Upload the AIInterview folder to <limesurvey>/plugins/
  *   2. Activate the plugin in Admin → Configuration → Plugin Manager
@@ -14,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.0.0
+ * @version     1.1.0
  * @since       LimeSurvey 6.0
  */
 
@@ -48,40 +55,128 @@ class AIInterview extends PluginBase
      */
     public function init()
     {
-        // Question type registration (LimeSurvey 6.x — multiple hooks for compatibility)
-        $this->subscribe('listQuestionPlugins');
-        $this->subscribe('newQuestionAttributes');
-        $this->subscribe('beforeQuestionRender');
+        // Plugin lifecycle hooks — install/uninstall the question theme
+        $this->subscribe('beforeActivate');
+        $this->subscribe('beforeDeactivate');
 
         // Server-side AJAX proxy endpoint
         $this->subscribe('newDirectRequest');
+
+        // Per-question attribute registration (shown in question editor Advanced tab)
+        $this->subscribe('newQuestionAttributes');
+
+        // Inject configuration data attributes into the rendered widget HTML
+        $this->subscribe('beforeQuestionRender');
     }
 
     // =========================================================================
-    // QUESTION TYPE REGISTRATION (LimeSurvey 6.x)
+    // PLUGIN LIFECYCLE — QUESTION THEME INSTALLATION
     // =========================================================================
 
     /**
-     * Register this plugin as providing a custom question type.
-     * LimeSurvey 6.x fires this event to discover available question types.
+     * On plugin activation:
+     *   1. Copy the question theme to upload/themes/question/AIInterview/
+     *   2. Import the theme into the question_themes database table
      *
-     * Uses type code 'Z' (unused by LimeSurvey core) to avoid conflicts.
+     * This makes "AI Interview" appear in the question type selector.
      */
-    public function listQuestionPlugins()
+    public function beforeActivate()
     {
-        $event = $this->getEvent();
-        $event->append('questionplugins', [
-            'AIInterview' => [
-                'name'        => gT('AI Interview'),
-                'description' => gT('An AI-powered conversational interview. The respondent chats with an AI interviewer and the full transcript is saved as the answer.'),
-                'class'       => 'AIInterview',
-                'type'        => 'Z',
-            ],
-        ]);
+        $this->installQuestionTheme();
     }
 
     /**
-     * Register per-question attributes (shown in the question editor under "Advanced" tab)
+     * On plugin deactivation: remove the question theme from the database.
+     * (Files in upload/ are left in place so existing surveys still work.)
+     */
+    public function beforeDeactivate()
+    {
+        $this->uninstallQuestionTheme();
+    }
+
+    /**
+     * Copy the question theme files to upload/themes/question/AIInterview/
+     * and import the theme into the database.
+     */
+    private function installQuestionTheme(): void
+    {
+        $rootDir    = Yii::app()->getConfig('rootdir');
+        $uploadDir  = Yii::app()->getConfig('userquestionthemerootdir');
+
+        // Resolve the upload directory (may be relative or absolute)
+        if (!is_dir($uploadDir)) {
+            $uploadDir = $rootDir . DIRECTORY_SEPARATOR . $uploadDir;
+        }
+
+        $sourceDir = dirname(__FILE__) . DIRECTORY_SEPARATOR . 'question_themes' . DIRECTORY_SEPARATOR . 'AIInterview';
+        $destDir   = $uploadDir . DIRECTORY_SEPARATOR . 'AIInterview';
+
+        // Copy theme files to upload/themes/question/AIInterview/
+        if (!is_dir($destDir)) {
+            $this->copyDirectory($sourceDir, $destDir);
+        } else {
+            // Always overwrite to pick up updates
+            $this->copyDirectory($sourceDir, $destDir);
+        }
+
+        // Import the theme into the database (if not already imported)
+        $existing = QuestionTheme::model()->findByAttributes(['name' => 'AIInterview']);
+        if (empty($existing)) {
+            try {
+                $oTheme = new QuestionTheme();
+                $oTheme->importManifest($destDir, true);
+            } catch (Exception $e) {
+                // Log but don't block activation
+                Yii::log('AIInterview: Failed to import question theme: ' . $e->getMessage(), CLogger::LEVEL_WARNING);
+            }
+        }
+    }
+
+    /**
+     * Remove the question theme from the database.
+     */
+    private function uninstallQuestionTheme(): void
+    {
+        $oTheme = QuestionTheme::model()->findByAttributes(['name' => 'AIInterview']);
+        if (!empty($oTheme)) {
+            try {
+                QuestionTheme::uninstall($oTheme);
+            } catch (Exception $e) {
+                Yii::log('AIInterview: Failed to uninstall question theme: ' . $e->getMessage(), CLogger::LEVEL_WARNING);
+            }
+        }
+    }
+
+    /**
+     * Recursively copy a directory.
+     */
+    private function copyDirectory(string $src, string $dst): void
+    {
+        if (!is_dir($dst)) {
+            mkdir($dst, 0755, true);
+        }
+        $dir = opendir($src);
+        if ($dir === false) return;
+        while (($file = readdir($dir)) !== false) {
+            if ($file === '.' || $file === '..') continue;
+            $srcPath = $src . DIRECTORY_SEPARATOR . $file;
+            $dstPath = $dst . DIRECTORY_SEPARATOR . $file;
+            if (is_dir($srcPath)) {
+                $this->copyDirectory($srcPath, $dstPath);
+            } else {
+                copy($srcPath, $dstPath);
+            }
+        }
+        closedir($dir);
+    }
+
+    // =========================================================================
+    // QUESTION ATTRIBUTE REGISTRATION
+    // =========================================================================
+
+    /**
+     * Register per-question attributes (shown in the question editor under "Advanced" tab).
+     * These attributes are available for questions using the AIInterview theme.
      */
     public function newQuestionAttributes()
     {
@@ -89,7 +184,7 @@ class AIInterview extends PluginBase
 
         $questionAttributes = [
             'ai_interview_prompt' => [
-                'types'    => 'Z',
+                'types'    => 'T',
                 'category' => gT('AI Interview Settings'),
                 'sortorder'=> 1,
                 'inputtype'=> 'textarea',
@@ -103,7 +198,7 @@ class AIInterview extends PluginBase
                 'caption'  => gT('AI Interviewer Prompt / Instructions'),
             ],
             'ai_interview_max_tokens' => [
-                'types'    => 'Z',
+                'types'    => 'T',
                 'category' => gT('AI Interview Settings'),
                 'sortorder'=> 2,
                 'inputtype'=> 'integer',
@@ -115,7 +210,7 @@ class AIInterview extends PluginBase
                 'caption'  => gT('Maximum Token Budget'),
             ],
             'ai_interview_mandatory' => [
-                'types'    => 'Z',
+                'types'    => 'T',
                 'category' => gT('AI Interview Settings'),
                 'sortorder'=> 3,
                 'inputtype'=> 'singleselect',
@@ -133,29 +228,37 @@ class AIInterview extends PluginBase
     }
 
     // =========================================================================
-    // QUESTION RENDERING
+    // QUESTION RENDERING — INJECT CONFIGURATION DATA ATTRIBUTES
     // =========================================================================
 
     /**
-     * Render the AI Interview widget when LimeSurvey renders a question of type 'I'
+     * After the Twig template renders the AI Interview widget, inject the
+     * configuration data attributes (prompt, maxTokens, surveyId, ajaxUrl,
+     * language, mandatory) into the widget div.
      *
-     * In LimeSurvey 6.x, plugin-registered question types use the plugin class name
-     * as the type identifier. We check for both the class name and the short code.
+     * This is called for ALL questions of type T; we only act on questions
+     * that use the AIInterview question theme.
      */
     public function beforeQuestionRender()
     {
         $event = $this->getEvent();
 
-        // Only handle our custom question type
-        // LimeSurvey 6.x uses the plugin class name as the type for plugin question types
+        // Only handle Long Free Text questions (type T)
         $type = $event->get('type');
-        if ($type !== 'AIInterview' && $type !== 'Z') {
+        if ($type !== 'T') {
             return;
         }
 
         $questionId = (int) $event->get('qid');
+
+        // Check if this question uses the AIInterview theme
+        $oQuestion = Question::model()->findByPk($questionId);
+        if (empty($oQuestion) || $oQuestion->question_theme_name !== 'AIInterview') {
+            return;
+        }
+
         $surveyId   = (int) $event->get('surveyId');
-        $sgqaCode   = (string) $event->get('sgqa');
+        $sgqaCode   = (string) $event->get('code');
 
         // Retrieve per-question attributes
         $attributes = QuestionAttribute::model()->getQuestionAttributes($questionId);
@@ -181,14 +284,34 @@ class AIInterview extends PluginBase
             ['plugin' => 'AIInterview', 'function' => 'chat']
         );
 
-        // Retrieve any previously saved answer (supports back-navigation)
-        $existingAnswer = '';
-        $sessionKey = 'survey_' . $surveyId;
-        if (isset($_SESSION[$sessionKey][$sgqaCode])) {
-            $existingAnswer = (string) $_SESSION[$sessionKey][$sgqaCode];
-        }
+        // Escape values for HTML attributes
+        $ePrompt   = htmlspecialchars($prompt,   ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $eAjaxUrl  = htmlspecialchars($ajaxUrl,  ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $eLanguage = htmlspecialchars($language, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
-        // Publish and register assets
+        // Inject data attributes into the widget div by modifying the rendered HTML.
+        // The Twig template renders <div class="ai-interview-widget ... " data-sgqa="...">
+        // We add the configuration data attributes to this div.
+        $answers = (string) $event->get('answers');
+
+        $dataAttrs = ' data-survey-id="' . $surveyId . '"'
+                   . ' data-ajax-url="' . $eAjaxUrl . '"'
+                   . ' data-prompt="' . $ePrompt . '"'
+                   . ' data-max-tokens="' . $maxTokens . '"'
+                   . ' data-language="' . $eLanguage . '"'
+                   . ' data-mandatory="' . $mandatory . '"';
+
+        // Insert data attributes into the widget div opening tag
+        $answers = preg_replace(
+            '/(<div\s[^>]*class="[^"]*ai-interview-widget[^"]*"[^>]*)(>)/',
+            '$1' . $dataAttrs . '$2',
+            $answers,
+            1
+        );
+
+        $event->set('answers', $answers);
+
+        // Register CSS and JS assets
         $assetPath = dirname(__FILE__) . '/assets';
         $assetUrl  = Yii::app()->assetManager->publish($assetPath);
 
@@ -200,22 +323,6 @@ class AIInterview extends PluginBase
             $assetUrl . '/ai-interview.js',
             CClientScript::POS_END
         );
-
-        // Build and inject the widget HTML
-        $html = $this->buildWidgetHtml(
-            $questionId,
-            $sgqaCode,
-            $surveyId,
-            $ajaxUrl,
-            $prompt,
-            $maxTokens,
-            $mandatory,
-            $language,
-            $existingAnswer
-        );
-
-        // Append our widget HTML after the question text
-        $event->set('questiontext', $event->get('questiontext') . $html);
     }
 
     // =========================================================================
@@ -449,168 +556,8 @@ class AIInterview extends PluginBase
     }
 
     // =========================================================================
-    // HTML WIDGET BUILDER
-    // =========================================================================
-
-    /**
-     * Build the complete HTML for the AI Interview chat widget
-     */
-    private function buildWidgetHtml(
-        int    $questionId,
-        string $sgqaCode,
-        int    $surveyId,
-        string $ajaxUrl,
-        string $prompt,
-        int    $maxTokens,
-        int    $mandatory,
-        string $language,
-        string $existingAnswer
-    ): string {
-        // Escape all values that go into HTML attributes
-        $ePrompt    = htmlspecialchars($prompt,    ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $eAjaxUrl   = htmlspecialchars($ajaxUrl,   ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $eLanguage  = htmlspecialchars($language,  ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $eAnswer    = htmlspecialchars($existingAnswer, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-
-        $mandatoryAttr   = $mandatory ? 'data-mandatory="1"' : 'data-mandatory="0"';
-
-        $mandatoryNotice = $mandatory
-            ? '<p class="ai-interview-mandatory-notice">'
-              . gT('You must send at least one message before you can proceed.')
-              . '</p>'
-            : '';
-
-        $finishLabel      = htmlspecialchars(gT('Finish Interview'),                    ENT_QUOTES, 'UTF-8');
-        $inputPlaceholder = htmlspecialchars(gT('Type your response here…'),            ENT_QUOTES, 'UTF-8');
-        $sendLabel        = htmlspecialchars(gT('Send'),                                ENT_QUOTES, 'UTF-8');
-        $typingLabel      = htmlspecialchars(gT('Interviewer is typing…'),              ENT_QUOTES, 'UTF-8');
-        $errorLabel       = htmlspecialchars(
-            gT('The AI service is currently unavailable. You may skip this question or try again later.'),
-            ENT_QUOTES, 'UTF-8'
-        );
-        $skipLabel        = htmlspecialchars(gT('Skip this question'),                  ENT_QUOTES, 'UTF-8');
-        $tokenWarning     = htmlspecialchars(
-            gT('The interview has reached its maximum length and has been automatically concluded.'),
-            ENT_QUOTES, 'UTF-8'
-        );
-
-        return <<<HTML
-<div class="ai-interview-widget"
-     id="ai-interview-{$questionId}"
-     data-qid="{$questionId}"
-     data-sgqa="{$sgqaCode}"
-     data-survey-id="{$surveyId}"
-     data-ajax-url="{$eAjaxUrl}"
-     data-prompt="{$ePrompt}"
-     data-max-tokens="{$maxTokens}"
-     data-language="{$eLanguage}"
-     {$mandatoryAttr}>
-
-    {$mandatoryNotice}
-
-    <!-- Chat message display area -->
-    <div class="ai-interview-messages"
-         id="ai-messages-{$questionId}"
-         role="log"
-         aria-live="polite"
-         aria-label="Interview conversation">
-    </div>
-
-    <!-- Typing indicator (shown while waiting for AI response) -->
-    <div class="ai-interview-typing"
-         id="ai-typing-{$questionId}"
-         style="display:none;"
-         aria-live="polite"
-         aria-label="{$typingLabel}">
-        <span class="ai-typing-dot"></span>
-        <span class="ai-typing-dot"></span>
-        <span class="ai-typing-dot"></span>
-        <span class="ai-typing-label">{$typingLabel}</span>
-    </div>
-
-    <!-- Error banner (shown when OpenAI is unreachable) -->
-    <div class="ai-interview-error"
-         id="ai-error-{$questionId}"
-         style="display:none;"
-         role="alert">
-        <span class="ai-error-text">{$errorLabel}</span>
-        <button type="button"
-                class="ai-btn ai-btn-secondary ai-btn-skip"
-                data-qid="{$questionId}">
-            {$skipLabel}
-        </button>
-    </div>
-
-    <!-- Token budget exhausted notice -->
-    <div class="ai-interview-token-warning"
-         id="ai-token-warning-{$questionId}"
-         style="display:none;"
-         role="status">
-        {$tokenWarning}
-    </div>
-
-    <!-- User input area -->
-    <div class="ai-interview-input-area" id="ai-input-area-{$questionId}">
-        <textarea
-            class="ai-interview-input"
-            id="ai-input-{$questionId}"
-            placeholder="{$inputPlaceholder}"
-            rows="3"
-            aria-label="{$inputPlaceholder}"
-        ></textarea>
-        <div class="ai-interview-actions">
-            <button type="button"
-                    class="ai-btn ai-btn-primary ai-btn-send"
-                    id="ai-send-{$questionId}"
-                    data-qid="{$questionId}">
-                {$sendLabel}
-            </button>
-            <button type="button"
-                    class="ai-btn ai-btn-finish ai-btn-finish-interview"
-                    id="ai-finish-{$questionId}"
-                    data-qid="{$questionId}"
-                    style="display:none;">
-                {$finishLabel}
-            </button>
-        </div>
-    </div>
-
-    <!--
-        Hidden textarea — holds the plain-text transcript.
-        Submitted with the survey form and stored by LimeSurvey as the answer.
-        LimeSurvey uses the sgqa code directly as the form field name.
-    -->
-    <textarea
-        name="{$sgqaCode}"
-        id="answer-{$sgqaCode}"
-        class="ai-interview-answer-field"
-        style="display:none;"
-        aria-hidden="true"
-    >{$eAnswer}</textarea>
-
-    <!-- Running token counter (hidden, used by JS) -->
-    <input type="hidden" id="ai-tokens-used-{$questionId}" value="0" />
-
-</div>
-HTML;
-    }
-
-    // =========================================================================
     // HELPERS
     // =========================================================================
-
-    /**
-     * Detect the active survey language from the session
-     */
-    private function getSessionLanguage(int $surveyId): string
-    {
-        $sessionKey = 'survey_' . $surveyId;
-        if (isset($_SESSION[$sessionKey]['s_lang'])) {
-            return (string) $_SESSION[$sessionKey]['s_lang'];
-        }
-        // Fall back to the application language
-        return (string) Yii::app()->language;
-    }
 
     /**
      * Return the default system prompt displayed in the question editor
@@ -631,6 +578,19 @@ Guidelines:
 
 Start the interview now by introducing yourself and asking your first question.
 PROMPT;
+    }
+
+    /**
+     * Detect the active survey language from the session
+     */
+    private function getSessionLanguage(int $surveyId): string
+    {
+        $sessionKey = 'survey_' . $surveyId;
+        if (isset($_SESSION[$sessionKey]['s_lang'])) {
+            return (string) $_SESSION[$sessionKey]['s_lang'];
+        }
+        // Fall back to the application language
+        return (string) Yii::app()->language;
     }
 
     /**

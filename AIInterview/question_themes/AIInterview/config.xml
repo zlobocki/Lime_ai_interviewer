@@ -5,25 +5,108 @@
         <type>question_theme</type>
         <title>AI Interview</title>
         <creationDate>2026-02-24</creationDate>
-        <lastUpdate>2026-02-24</lastUpdate>
+        <lastUpdate>2026-02-25</lastUpdate>
         <author>LimeSurvey AI Interview Plugin</author>
-        <version>1.0.0</version>
+        <authorEmail></authorEmail>
+        <authorUrl>https://github.com/</authorUrl>
+        <copyright></copyright>
         <license>GPL v2</license>
+        <version>1.0.0</version>
+        <apiVersion>1</apiVersion>
         <description>
             <![CDATA[An AI-powered conversational interview question type. Respondents chat with an AI interviewer and the full transcript is saved as the answer.]]>
         </description>
-        <question_type>Z</question_type>
-        <group>Text</group>
+        <questionType>T</questionType>
+        <group>Text questions</group>
         <subquestions>0</subquestions>
         <answerscales>0</answerscales>
         <hasdefaultvalues>0</hasdefaultvalues>
         <assessable>0</assessable>
-        <image>survey/questions/answer/AIInterview/assets/icon.png</image>
+        <class>ai-interview</class>
     </metadata>
-    <engine>
-        <reloadaftersave>false</reloadaftersave>
-    </engine>
+
     <compatibility>
         <version>6.0</version>
     </compatibility>
+
+    <files>
+        <css>
+            <filename>assets/ai-interview.css</filename>
+        </css>
+        <js>
+            <filename>assets/ai-interview.js</filename>
+        </js>
+        <preview>
+            <filename></filename>
+        </preview>
+    </files>
+
+    <generalattributes>
+        <attribute>question_template</attribute>
+        <attribute>gid</attribute>
+        <attribute>mandatory</attribute>
+        <attribute>relevance</attribute>
+        <attribute>save_as_default</attribute>
+        <attribute>clear_default</attribute>
+    </generalattributes>
+
+    <attributes>
+        <attribute>
+            <name>ai_interview_prompt</name>
+            <category>AI Interview Settings</category>
+            <sortorder>1</sortorder>
+            <inputtype>textarea</inputtype>
+            <default></default>
+            <help>Instructions for the AI interviewer. Specify the topic, number of questions, and include an instruction to tell the respondent to press the Finish Interview button when done.</help>
+            <caption>AI Interviewer Prompt / Instructions</caption>
+            <i18n></i18n>
+            <readonly></readonly>
+            <readonly_when_active></readonly_when_active>
+            <expression></expression>
+        </attribute>
+        <attribute>
+            <name>ai_interview_max_tokens</name>
+            <category>AI Interview Settings</category>
+            <sortorder>2</sortorder>
+            <inputtype>integer</inputtype>
+            <default>6000</default>
+            <help>Maximum total tokens (prompt + all messages + AI replies) for this interview. When this budget is reached the interview ends automatically.</help>
+            <caption>Maximum Token Budget</caption>
+            <i18n></i18n>
+            <readonly></readonly>
+            <readonly_when_active></readonly_when_active>
+            <expression></expression>
+        </attribute>
+        <attribute>
+            <name>ai_interview_mandatory</name>
+            <category>AI Interview Settings</category>
+            <sortorder>3</sortorder>
+            <inputtype>singleselect</inputtype>
+            <options>
+                <option>
+                    <value>0</value>
+                    <text>No – respondent may skip</text>
+                </option>
+                <option>
+                    <value>1</value>
+                    <text>Yes – respondent must send at least one message</text>
+                </option>
+            </options>
+            <default>0</default>
+            <help>Whether the respondent must interact with the AI before they can proceed to the next page.</help>
+            <caption>Mandatory Interaction</caption>
+            <i18n></i18n>
+            <readonly></readonly>
+            <readonly_when_active></readonly_when_active>
+            <expression></expression>
+        </attribute>
+    </attributes>
+
+    <engine>
+        <load_core_css>true</load_core_css>
+        <load_core_js>true</load_core_js>
+        <show_as_template>false</show_as_template>
+        <show_as_question_type>true</show_as_question_type>
+        <reloadaftersave>false</reloadaftersave>
+    </engine>
 </config>

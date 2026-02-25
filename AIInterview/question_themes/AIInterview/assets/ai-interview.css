@@ -1,0 +1,305 @@
+/* ==========================================================================
+   AI Interview Widget — LimeSurvey Plugin
+   ========================================================================== */
+
+/* Container */
+.ai-interview-widget {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    max-width: 760px;
+    margin: 16px 0;
+    border: 1px solid #d1d5db;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #ffffff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* --------------------------------------------------------------------------
+   Message list
+   -------------------------------------------------------------------------- */
+.ai-interview-messages {
+    min-height: 280px;
+    max-height: 480px;
+    overflow-y: auto;
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: #f9fafb;
+    scroll-behavior: smooth;
+}
+
+/* Individual message bubble */
+.ai-message {
+    display: flex;
+    flex-direction: column;
+    max-width: 80%;
+    animation: ai-fade-in 0.2s ease-out;
+}
+
+@keyframes ai-fade-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Interviewer (AI) messages — left-aligned */
+.ai-message.ai-message-assistant {
+    align-self: flex-start;
+}
+
+.ai-message.ai-message-assistant .ai-message-bubble {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px 16px 16px 16px;
+    color: #111827;
+}
+
+/* User messages — right-aligned */
+.ai-message.ai-message-user {
+    align-self: flex-end;
+}
+
+.ai-message.ai-message-user .ai-message-bubble {
+    background: #2563eb;
+    border-radius: 16px 4px 16px 16px;
+    color: #ffffff;
+}
+
+/* Bubble content */
+.ai-message-bubble {
+    padding: 10px 14px;
+    font-size: 0.95rem;
+    line-height: 1.55;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+/* Sender label */
+.ai-message-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #6b7280;
+    margin-bottom: 3px;
+    padding: 0 2px;
+}
+
+.ai-message.ai-message-user .ai-message-label {
+    text-align: right;
+}
+
+/* --------------------------------------------------------------------------
+   Typing indicator
+   -------------------------------------------------------------------------- */
+.ai-interview-typing {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 16px;
+    background: #f9fafb;
+}
+
+.ai-typing-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #9ca3af;
+    animation: ai-bounce 1.2s infinite ease-in-out;
+}
+
+.ai-typing-dot:nth-child(1) { animation-delay: 0s; }
+.ai-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.ai-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes ai-bounce {
+    0%, 80%, 100% { transform: scale(0.7); opacity: 0.5; }
+    40%            { transform: scale(1.0); opacity: 1; }
+}
+
+.ai-typing-label {
+    font-size: 0.8rem;
+    color: #9ca3af;
+    margin-left: 4px;
+}
+
+/* --------------------------------------------------------------------------
+   Error banner
+   -------------------------------------------------------------------------- */
+.ai-interview-error {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    background: #fef2f2;
+    border-top: 1px solid #fecaca;
+    color: #b91c1c;
+    font-size: 0.9rem;
+}
+
+.ai-error-text {
+    flex: 1;
+}
+
+/* --------------------------------------------------------------------------
+   Token warning
+   -------------------------------------------------------------------------- */
+.ai-interview-token-warning {
+    padding: 10px 16px;
+    background: #fffbeb;
+    border-top: 1px solid #fde68a;
+    color: #92400e;
+    font-size: 0.88rem;
+    text-align: center;
+}
+
+/* --------------------------------------------------------------------------
+   Mandatory notice
+   -------------------------------------------------------------------------- */
+.ai-interview-mandatory-notice {
+    padding: 8px 16px;
+    background: #eff6ff;
+    border-bottom: 1px solid #bfdbfe;
+    color: #1d4ed8;
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Input area
+   -------------------------------------------------------------------------- */
+.ai-interview-input-area {
+    padding: 12px 16px;
+    border-top: 1px solid #e5e7eb;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ai-interview-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 60px;
+    transition: border-color 0.15s;
+    box-sizing: border-box;
+    color: #111827;
+    background: #f9fafb;
+}
+
+.ai-interview-input:focus {
+    outline: none;
+    border-color: #2563eb;
+    background: #ffffff;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.ai-interview-input:disabled {
+    background: #f3f4f6;
+    color: #9ca3af;
+    cursor: not-allowed;
+}
+
+/* Action buttons row */
+.ai-interview-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+/* --------------------------------------------------------------------------
+   Buttons
+   -------------------------------------------------------------------------- */
+.ai-btn {
+    padding: 8px 18px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s, transform 0.1s;
+    white-space: nowrap;
+}
+
+.ai-btn:active {
+    transform: scale(0.97);
+}
+
+.ai-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Primary — Send */
+.ai-btn-primary {
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.ai-btn-primary:hover:not(:disabled) {
+    background: #1d4ed8;
+}
+
+/* Finish Interview */
+.ai-btn-finish {
+    background: #16a34a;
+    color: #ffffff;
+}
+
+.ai-btn-finish:hover:not(:disabled) {
+    background: #15803d;
+}
+
+/* Secondary / Skip */
+.ai-btn-secondary {
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #d1d5db;
+}
+
+.ai-btn-secondary:hover:not(:disabled) {
+    background: #e5e7eb;
+}
+
+/* --------------------------------------------------------------------------
+   Finished state — input area locked
+   -------------------------------------------------------------------------- */
+.ai-interview-widget.ai-interview-finished .ai-interview-input-area {
+    background: #f9fafb;
+}
+
+.ai-interview-finished-notice {
+    padding: 10px 16px;
+    background: #f0fdf4;
+    border-top: 1px solid #bbf7d0;
+    color: #166534;
+    font-size: 0.88rem;
+    text-align: center;
+    font-weight: 500;
+}
+
+/* --------------------------------------------------------------------------
+   Responsive
+   -------------------------------------------------------------------------- */
+@media (max-width: 480px) {
+    .ai-message {
+        max-width: 95%;
+    }
+
+    .ai-interview-actions {
+        flex-direction: column;
+    }
+
+    .ai-btn {
+        width: 100%;
+        text-align: center;
+    }
+}

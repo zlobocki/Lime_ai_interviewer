@@ -1,0 +1,109 @@
+{#
+/**
+ * AI Interview question type — answer widget
+ *
+ * This Twig template overrides the Long Free Text (T) answer rendering
+ * for questions using the AIInterview question theme.
+ *
+ * The plugin (AIInterview.php) injects the prompt and settings via
+ * the beforeQuestionRender event (as data attributes on the widget div).
+ *
+ * Variables available from LimeSurvey core (longfreetext context):
+ * @var name        SGQA field name (used as the form field name for the answer)
+ * @var dispVal     Previously saved answer value (for back-navigation)
+ * @var extraclass  Extra CSS classes
+ * @var coreClass   Core CSS class
+ * @var basename    Base name (same as name for simple questions)
+ */
+#}
+
+<div class="ai-interview-widget {{ extraclass }}"
+     id="ai-interview-widget-{{ name }}"
+     data-sgqa="{{ name }}">
+
+    <!-- Chat message display area -->
+    <div class="ai-interview-messages"
+         id="ai-messages-{{ name }}"
+         role="log"
+         aria-live="polite"
+         aria-label="Interview conversation">
+    </div>
+
+    <!-- Typing indicator -->
+    <div class="ai-interview-typing"
+         id="ai-typing-{{ name }}"
+         style="display:none;"
+         aria-live="polite">
+        <span class="ai-typing-dot"></span>
+        <span class="ai-typing-dot"></span>
+        <span class="ai-typing-dot"></span>
+        <span class="ai-typing-label">Interviewer is typing…</span>
+    </div>
+
+    <!-- Error banner -->
+    <div class="ai-interview-error"
+         id="ai-error-{{ name }}"
+         style="display:none;"
+         role="alert">
+        <span class="ai-error-text">The AI service is currently unavailable. You may skip this question or try again later.</span>
+        <button type="button"
+                class="ai-btn ai-btn-secondary ai-btn-skip"
+                data-sgqa="{{ name }}">
+            Skip this question
+        </button>
+    </div>
+
+    <!-- Token budget exhausted notice -->
+    <div class="ai-interview-token-warning"
+         id="ai-token-warning-{{ name }}"
+         style="display:none;"
+         role="status">
+        The interview has reached its maximum length and has been automatically concluded.
+    </div>
+
+    <!-- User input area -->
+    <div class="ai-interview-input-area" id="ai-input-area-{{ name }}">
+        <textarea
+            class="ai-interview-input"
+            id="ai-input-{{ name }}"
+            placeholder="Type your response here…"
+            rows="3"
+            aria-label="Type your response here…"
+        ></textarea>
+        <div class="ai-interview-actions">
+            <button type="button"
+                    class="ai-btn ai-btn-primary ai-btn-send"
+                    id="ai-send-{{ name }}"
+                    data-sgqa="{{ name }}">
+                Send
+            </button>
+            <button type="button"
+                    class="ai-btn ai-btn-finish ai-btn-finish-interview"
+                    id="ai-finish-{{ name }}"
+                    data-sgqa="{{ name }}"
+                    style="display:none;">
+                Finish Interview
+            </button>
+        </div>
+    </div>
+
+    <!--
+        Hidden textarea — holds the plain-text transcript.
+        Submitted with the survey form and stored by LimeSurvey as the answer.
+        LimeSurvey uses the sgqa code directly as the form field name.
+        The plugin injects data-prompt, data-max-tokens, data-survey-id,
+        data-ajax-url, data-language, and data-mandatory via beforeQuestionRender.
+    -->
+    <textarea
+        name="{{ name }}"
+        id="answer{{ name }}"
+        class="ai-interview-answer-field"
+        style="display:none;"
+        aria-hidden="true"
+        aria-labelledby="ls-question-text-{{ basename }}"
+    >{{ dispVal }}</textarea>
+
+    <!-- Running token counter (hidden, used by JS) -->
+    <input type="hidden" id="ai-tokens-used-{{ name }}" value="0" />
+
+</div>
