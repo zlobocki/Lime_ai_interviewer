@@ -96,12 +96,16 @@ class AIInterview extends PluginBase
 
     /**
      * Copy the question theme files to upload/themes/question/AIInterview/
-     * and import the theme into the database.
+     * and register the theme in the database.
+     *
+     * We directly set all QuestionTheme attributes rather than relying on
+     * importManifest(), which has fragile path-comparison logic that can
+     * silently fail when the theme directory is outside the expected paths.
      */
     private function installQuestionTheme(): void
     {
-        $rootDir    = Yii::app()->getConfig('rootdir');
-        $uploadDir  = Yii::app()->getConfig('userquestionthemerootdir');
+        $rootDir   = Yii::app()->getConfig('rootdir');
+        $uploadDir = Yii::app()->getConfig('userquestionthemerootdir');
 
         // Resolve the upload directory (may be relative or absolute)
         if (!is_dir($uploadDir)) {
@@ -112,23 +116,67 @@ class AIInterview extends PluginBase
         $destDir   = $uploadDir . DIRECTORY_SEPARATOR . 'AIInterview';
 
         // Copy theme files to upload/themes/question/AIInterview/
-        if (!is_dir($destDir)) {
-            $this->copyDirectory($sourceDir, $destDir);
-        } else {
-            // Always overwrite to pick up updates
-            $this->copyDirectory($sourceDir, $destDir);
+        $this->copyDirectory($sourceDir, $destDir);
+
+        // Register the theme in the database (if not already registered)
+        $existing = QuestionTheme::model()->findByAttributes(['name' => 'AIInterview']);
+        if (!empty($existing)) {
+            // Already registered — update the xml_path in case the install path changed
+            $existing->xml_path = $destDir;
+            $existing->save(false);
+            return;
         }
 
-        // Import the theme into the database (if not already imported)
-        $existing = QuestionTheme::model()->findByAttributes(['name' => 'AIInterview']);
-        if (empty($existing)) {
-            try {
-                $oTheme = new QuestionTheme();
-                $oTheme->importManifest($destDir, true);
-            } catch (Exception $e) {
-                // Log but don't block activation
-                Yii::log('AIInterview: Failed to import question theme: ' . $e->getMessage(), CLogger::LEVEL_WARNING);
-            }
+        // Determine whether a base T theme already exists in the DB.
+        // If yes, our theme must set extends='T' so it appears as a variant.
+        // If no (unlikely), we register as the base T theme.
+        $baseT = QuestionTheme::model()->findAll(
+            'question_type = :qt AND extends = :ext',
+            [':qt' => 'T', ':ext' => '']
+        );
+        $extends = empty($baseT) ? '' : 'T';
+
+        // Build the settings JSON (mirrors what getMetaDataArray produces)
+        $settings = json_encode([
+            'subquestions'     => 0,
+            'other'            => false,
+            'answerscales'     => 0,
+            'hasdefaultvalues' => 0,
+            'assessable'       => 0,
+            'class'            => 'ai-interview',
+        ]);
+
+        $oTheme = new QuestionTheme();
+        $oTheme->setAttributes([
+            'name'          => 'AIInterview',
+            'visible'       => 'Y',
+            'xml_path'      => $destDir,
+            'image_path'    => '',
+            'title'         => 'AI Interview',
+            'creation_date' => date('Y-m-d H:i:s'),
+            'author'        => 'LimeSurvey AI Interview Plugin',
+            'author_email'  => '',
+            'author_url'    => '',
+            'copyright'     => '',
+            'license'       => 'GPL v2',
+            'version'       => '1.0.0',
+            'api_version'   => '1',
+            'description'   => 'An AI-powered conversational interview question type.',
+            'last_update'   => date('Y-m-d H:i:s'),
+            'owner_id'      => 1,
+            'theme_type'    => 'question_theme',
+            'question_type' => 'T',
+            'core_theme'    => 0,
+            'extends'       => $extends,
+            'group'         => 'Text questions',
+            'settings'      => $settings,
+        ], false);
+
+        if (!$oTheme->save()) {
+            Yii::log(
+                'AIInterview: Failed to register question theme: ' . json_encode($oTheme->errors),
+                CLogger::LEVEL_WARNING
+            );
         }
     }
 
