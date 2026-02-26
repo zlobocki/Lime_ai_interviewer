@@ -5,7 +5,7 @@
  * Communicates with the server-side OpenAI proxy endpoint.
  * The API key is NEVER present in this file or in the page HTML.
  *
- * @version 1.3.0
+ * @version 1.4.0
  */
 
 (function () {
@@ -16,11 +16,12 @@
     // =========================================================================
 
     function initAllWidgets() {
-        var widgets = document.querySelectorAll('.ai-interview-widget');
+        var widgets = document.querySelectorAll('.ai-interview-widget:not([data-ai-initialized])');
         if (widgets.length === 0) {
-            console.log('AIInterview: No widgets found on page.');
+            console.log('AIInterview: No uninitialised widgets found on page.');
         }
         widgets.forEach(function (widget) {
+            widget.setAttribute('data-ai-initialized', '1');
             initWidget(widget);
         });
     }
@@ -504,6 +505,10 @@
     // =========================================================================
     // Bootstrap
     // =========================================================================
+
+    // Expose globally so the inline PHP-injected script can call it after
+    // dynamically inserting the widget HTML into the DOM.
+    window.AIInterviewInitAll = initAllWidgets;
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initAllWidgets);

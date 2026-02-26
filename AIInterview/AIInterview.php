@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.5.0
+ * @version     1.6.0
  * @since       LimeSurvey 6.0
  */
 
@@ -573,6 +573,10 @@ class AIInterview extends PluginBase
         var sgqa = {$eSgqa};
         // Skip if widget already injected by afterRenderQuestion
         if (document.getElementById('ai-interview-widget-' + sgqa)) {
+            // Widget already in DOM — make sure it is initialised
+            if (typeof window.AIInterviewInitAll === 'function') {
+                window.AIInterviewInitAll();
+            }
             return;
         }
         // Find the standard textarea for this question
@@ -591,6 +595,10 @@ class AIInterview extends PluginBase
                 answerField.value = textarea.value;
             }
             textarea.parentNode.replaceChild(widget, textarea);
+            // Now initialise the newly injected widget
+            if (typeof window.AIInterviewInitAll === 'function') {
+                window.AIInterviewInitAll();
+            }
         }
     }
     if (document.readyState === 'loading') {
