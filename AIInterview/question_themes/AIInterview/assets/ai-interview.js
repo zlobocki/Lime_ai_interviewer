@@ -5,7 +5,7 @@
  * Communicates with the server-side OpenAI proxy endpoint.
  * The API key is NEVER present in this file or in the page HTML.
  *
- * @version 1.2.0
+ * @version 1.3.0
  */
 
 (function () {
@@ -98,9 +98,20 @@
         var finished = false;
 
         // -----------------------------------------------------------------------
+        // Pre-populate the hidden answer field with a placeholder so that
+        // LimeSurvey's mandatory-question validation does not block the Next
+        // button before the interview has started.  The real transcript will
+        // overwrite this value as the conversation progresses.
+        // -----------------------------------------------------------------------
+        if (answerField && !answerField.value.trim()) {
+            answerField.value = '[AI Interview in progress]';
+        }
+
+        // -----------------------------------------------------------------------
         // Check for existing answer (resume after back-navigation)
         // -----------------------------------------------------------------------
-        if (answerField && answerField.value.trim()) {
+        if (answerField && answerField.value.trim()
+                && answerField.value.trim() !== '[AI Interview in progress]') {
             restoreFromTranscript(answerField.value.trim());
             return; // Don't re-start the interview
         }
@@ -127,6 +138,8 @@
             }, function (errMsg) {
                 setLoading(false);
                 showError(errMsg);
+                // Even if the AI fails, allow the respondent to proceed
+                // by keeping the placeholder value in the answer field.
             });
         } else {
             // No prompt configured — show a configuration error
@@ -156,6 +169,31 @@
         if (finishBtn) {
             finishBtn.addEventListener('click', function () {
                 finishInterview();
+            });
+        }
+
+        // -----------------------------------------------------------------------
+        // Retry button (inside error banner) — re-attempts the opening AI call
+        // -----------------------------------------------------------------------
+        var retryBtn = document.getElementById('ai-retry-' + sgqa);
+        if (retryBtn) {
+            retryBtn.addEventListener('click', function () {
+                if (errorEl) errorEl.style.display = 'none';
+                setLoading(true);
+                callAI(function (reply, newTokens, finishReason) {
+                    setLoading(false);
+                    tokensUsed += newTokens;
+                    if (tokensUsedEl) tokensUsedEl.value = tokensUsed;
+                    appendMessage('assistant', reply);
+                    conversationHistory.push({ role: 'assistant', content: reply });
+                    transcriptLines.push('Interviewer: ' + reply);
+                    updateAnswerField();
+                    if (finishBtn) finishBtn.style.display = 'inline-block';
+                    checkTokenBudget();
+                }, function (errMsg) {
+                    setLoading(false);
+                    showError(errMsg);
+                });
             });
         }
 

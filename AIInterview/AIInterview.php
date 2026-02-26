@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.4.0
+ * @version     1.5.0
  * @since       LimeSurvey 6.0
  */
 
@@ -690,6 +690,12 @@ JS;
          role="alert">
         <span class="ai-error-text">The AI service is currently unavailable. You may skip this question or try again later.</span>
         <button type="button"
+                class="ai-btn ai-btn-primary ai-btn-retry"
+                id="ai-retry-{$eSgqa}"
+                data-sgqa="{$eSgqa}">
+            Retry
+        </button>
+        <button type="button"
                 class="ai-btn ai-btn-secondary ai-btn-skip"
                 data-sgqa="{$eSgqa}">
             Skip this question
@@ -734,12 +740,19 @@ JS;
         Hidden textarea — holds the plain-text transcript.
         Submitted with the survey form and stored by LimeSurvey as the answer.
         LimeSurvey uses the sgqa code directly as the form field name.
+
+        IMPORTANT: We use position:absolute / opacity:0 rather than display:none
+        so that LimeSurvey's mandatory-field JS validation can still find and
+        read the value of this element.  display:none causes some LimeSurvey
+        validation routines to skip the element entirely, making the Next button
+        appear to do nothing when the question is marked mandatory.
     -->
     <textarea
         name="{$eSgqa}"
         id="answer{$eSgqa}"
         class="ai-interview-answer-field"
-        style="display:none;"
+        style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;overflow:hidden;"
+        tabindex="-1"
         aria-hidden="true"
     >{$eDispVal}</textarea>
 
