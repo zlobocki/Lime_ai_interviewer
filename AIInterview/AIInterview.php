@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.6.0
+ * @version     1.7.0
  * @since       LimeSurvey 6.0
  */
 
@@ -62,6 +62,12 @@ class AIInterview extends PluginBase
         // Server-side AJAX proxy endpoint (chat + debug)
         $this->subscribe('newDirectRequest');
 
+        // Disable CSRF validation for our plugin's direct requests.
+        // Yii's CSRF check runs before newDirectRequest fires and rejects JSON POST
+        // bodies because YII_CSRF_TOKEN is not present as a form field.
+        // We handle our own security (session check + admin check) inside handleChatRequest().
+        $this->subscribe('beforeControllerAction');
+
         // Per-question attribute registration (shown in question editor Advanced tab)
         $this->subscribe('newQuestionAttributes');
 
@@ -77,6 +83,29 @@ class AIInterview extends PluginBase
 
         // Admin notification if theme is not properly registered
         $this->subscribe('newAdminMenu');
+    }
+
+    /**
+     * Disable Yii CSRF validation for our plugin's direct request endpoint.
+     *
+     * LimeSurvey's CSRF check runs before newDirectRequest fires. When the
+     * browser sends a JSON POST body, YII_CSRF_TOKEN is not present as a form
+     * field, so Yii rejects the request with 400 "The CSRF token could not be
+     * verified." before our handler even runs.
+     *
+     * We disable CSRF only for requests that target this plugin's direct
+     * endpoint. Our own security checks (survey session + admin permission)
+     * inside handleChatRequest() provide equivalent protection.
+     */
+    public function beforeControllerAction()
+    {
+        $plugin  = Yii::app()->request->getParam('plugin');
+        $route   = Yii::app()->getUrlManager()->parseUrl(Yii::app()->request);
+
+        // Only disable CSRF for /plugins/direct?plugin=AIInterview requests
+        if ($plugin === 'AIInterview' && strpos($route, 'plugins/direct') !== false) {
+            Yii::app()->request->enableCsrfValidation = false;
+        }
     }
 
     // =========================================================================
