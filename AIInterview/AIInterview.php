@@ -10,7 +10,7 @@
  *   - The plugin registers a question theme that extends the Long Free Text (T) type.
  *   - On activation, the theme is copied to upload/themes/question/ and imported
  *     into the question_themes database table so it appears in the question type selector.
- *   - The theme's Twig template replaces the standard textarea with the AI chat widget.
+ *   - The afterRenderQuestion event replaces the standard textarea with the AI chat widget.
  *   - The plugin provides a server-side AJAX proxy for OpenAI (API key never exposed).
  *
  * Installation:
@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.1.0
+ * @version     1.2.0
  * @since       LimeSurvey 6.0
  */
 
@@ -65,11 +65,15 @@ class AIInterview extends PluginBase
         // Per-question attribute registration (shown in question editor Advanced tab)
         $this->subscribe('newQuestionAttributes');
 
-        // Inject configuration data attributes into the rendered widget HTML.
+        // Replace the rendered question HTML with the AI chat widget.
         // afterRenderQuestion fires after the Twig template has produced HTML,
-        // so the widget div exists and we can inject data attributes via regex.
-        // This also fires in question preview mode (admin), unlike beforeQuestionRender.
+        // including in question preview mode (admin).
         $this->subscribe('afterRenderQuestion');
+
+        // Fallback: inject a script-based widget initialiser before rendering.
+        // This handles cases where afterRenderQuestion does not fire or the HTML
+        // replacement regex does not match (e.g. in some admin preview contexts).
+        $this->subscribe('beforeQuestionRender');
 
         // Admin notification if theme is not properly registered
         $this->subscribe('newAdminMenu');
@@ -326,40 +330,87 @@ class AIInterview extends PluginBase
     }
 
     // =========================================================================
-    // QUESTION RENDERING — INJECT CONFIGURATION DATA ATTRIBUTES
+    // QUESTION RENDERING — INJECT AI WIDGET INTO RENDERED HTML
     // =========================================================================
 
     /**
-     * After the Twig template renders the AI Interview widget, register the
-     * CSS/JS assets so they are loaded on the page.
+     * After the question HTML is rendered, check if this is an AIInterview question.
+     * If so, replace the standard textarea with the AI chat widget HTML, and
+     * register the CSS/JS assets.
      *
-     * The data attributes (prompt, maxTokens, surveyId, ajaxUrl, language,
-     * mandatory) are now output directly by the Twig template using the
-     * question_attributes variable, so they are present in both live survey
-     * and question preview (admin) modes.
+     * This approach is more robust than relying on the Twig template system because:
+     * 1. It works regardless of whether the question theme Twig template is found
+     * 2. It works in both live survey and admin question preview modes
+     * 3. It works even if question_theme_name is not set correctly
      *
-     * This event fires after the Twig template has produced HTML, so it is
-     * the correct place to register assets. It also fires in preview mode.
-     *
-     * This is called for ALL questions; we only act on questions that use
-     * the AIInterview question theme.
+     * Detection: a question is an AI Interview question if it has the
+     * ai_interview_prompt attribute set (non-empty), OR if its question_theme_name
+     * is 'AIInterview'.
      */
     public function afterRenderQuestion()
     {
         $event = $this->getEvent();
 
         $questionId = (int) $event->get('qid');
-
-        // Check if this question uses the AIInterview theme
-        $oQuestion = Question::model()->findByPk($questionId);
-        if (empty($oQuestion) || $oQuestion->question_theme_name !== 'AIInterview') {
+        if ($questionId <= 0) {
             return;
         }
 
-        // Register CSS and JS assets from the plugin's assets/ directory.
-        // These are also declared in config.xml (for the question theme loader),
-        // but registering them here ensures they load even if the theme loader
-        // does not pick them up (e.g. in some preview contexts).
+        // Load the question
+        $oQuestion = Question::model()->findByPk($questionId);
+        if (empty($oQuestion)) {
+            return;
+        }
+
+        // Check if this is an AI Interview question.
+        // Primary check: question_theme_name = 'AIInterview'
+        // Fallback check: has ai_interview_prompt attribute set
+        $isAIInterview = ($oQuestion->question_theme_name === 'AIInterview');
+
+        if (!$isAIInterview) {
+            // Check for the attribute as a fallback
+            $promptAttr = QuestionAttribute::model()->findByAttributes([
+                'qid'       => $questionId,
+                'attribute' => 'ai_interview_prompt',
+            ]);
+            if (!empty($promptAttr) && !empty(trim($promptAttr->value))) {
+                $isAIInterview = true;
+            }
+        }
+
+        if (!$isAIInterview) {
+            return;
+        }
+
+        // Load question attributes
+        $prompt    = $this->getQuestionAttribute($questionId, 'ai_interview_prompt',    $this->getDefaultPrompt());
+        $maxTokens = (int) $this->getQuestionAttribute($questionId, 'ai_interview_max_tokens', 6000);
+        $mandatory = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mandatory', '0');
+
+        // Build the AJAX URL for the server-side proxy
+        $ajaxUrl = Yii::app()->createUrl('plugins/direct', [
+            'plugin'   => 'AIInterview',
+            'function' => 'chat',
+        ]);
+
+        // Get the survey ID and language
+        $surveyId = (int) $oQuestion->sid;
+        $language = $this->getSessionLanguage($surveyId);
+
+        // Build the SGQA code (field name for the answer)
+        // In LimeSurvey, the SGQA code is: {surveyId}X{groupId}X{questionId}
+        $sgqa = $surveyId . 'X' . $oQuestion->gid . 'X' . $questionId;
+
+        // Get the existing answer value (for back-navigation).
+        // We read it from the session rather than the DB to avoid errors in preview mode
+        // (where the survey response table may not exist).
+        $dispVal = '';
+        $sessionKey = 'survey_' . $surveyId;
+        if (isset($_SESSION[$sessionKey][$sgqa])) {
+            $dispVal = htmlspecialchars((string) $_SESSION[$sessionKey][$sgqa], ENT_QUOTES, 'UTF-8');
+        }
+
+        // Register CSS and JS assets
         $assetPath = dirname(__FILE__) . '/assets';
         $assetUrl  = Yii::app()->assetManager->publish($assetPath);
 
@@ -371,6 +422,332 @@ class AIInterview extends PluginBase
             $assetUrl . '/ai-interview.js',
             CClientScript::POS_END
         );
+
+        // Build the widget HTML
+        $widgetHtml = $this->buildWidgetHtml(
+            $sgqa,
+            $surveyId,
+            $ajaxUrl,
+            $prompt,
+            $maxTokens,
+            $language,
+            $mandatory,
+            $dispVal
+        );
+
+        // Get the current rendered HTML
+        $html = $event->get('html');
+
+        if (!empty($html)) {
+            // Replace the standard textarea (id="answer{sgqa}") with our widget.
+            // The standard LimeSurvey long free text textarea has id="answer{sgqa}"
+            // and name="{sgqa}". We replace the entire textarea element.
+            $escapedSgqa = preg_quote($sgqa, '/');
+
+            // Match the textarea element with this SGQA code
+            $pattern = '/<textarea[^>]+(?:id=["\']answer' . $escapedSgqa . '["\']|name=["\']' . $escapedSgqa . '["\'])[^>]*>.*?<\/textarea>/si';
+
+            if (preg_match($pattern, $html)) {
+                $newHtml = preg_replace($pattern, $widgetHtml, $html);
+                if ($newHtml !== null) {
+                    $event->set('html', $newHtml);
+                    return;
+                }
+            }
+
+            // Fallback: if we couldn't find the textarea by SGQA, try to find any
+            // textarea inside the question answer area and replace it
+            $fallbackPattern = '/<textarea[^>]+class=["\'][^"\']*(?:ls-answers|answer)[^"\']*["\'][^>]*>.*?<\/textarea>/si';
+            if (preg_match($fallbackPattern, $html)) {
+                $newHtml = preg_replace($fallbackPattern, $widgetHtml, $html, 1);
+                if ($newHtml !== null) {
+                    $event->set('html', $newHtml);
+                    return;
+                }
+            }
+
+            // Last resort: append the widget to the HTML
+            // (the hidden textarea in the widget will handle form submission)
+            $event->set('html', $html . $widgetHtml);
+        } else {
+            // No existing HTML — set the widget as the entire HTML
+            $event->set('html', $widgetHtml);
+        }
+    }
+
+    /**
+     * Fallback handler: fires before the Twig template renders.
+     *
+     * If afterRenderQuestion did not replace the HTML (e.g. in some admin preview
+     * contexts), this method injects a <script> block that runs after DOM load and
+     * transforms the standard textarea into the AI widget using JavaScript.
+     *
+     * The script checks if the widget div already exists (injected by afterRenderQuestion)
+     * and skips if so, to avoid double-initialisation.
+     */
+    public function beforeQuestionRender()
+    {
+        $event = $this->getEvent();
+
+        $questionId = (int) $event->get('qid');
+        if ($questionId <= 0) {
+            return;
+        }
+
+        $oQuestion = Question::model()->findByPk($questionId);
+        if (empty($oQuestion)) {
+            return;
+        }
+
+        // Check if this is an AI Interview question
+        $isAIInterview = ($oQuestion->question_theme_name === 'AIInterview');
+        if (!$isAIInterview) {
+            $promptAttr = QuestionAttribute::model()->findByAttributes([
+                'qid'       => $questionId,
+                'attribute' => 'ai_interview_prompt',
+            ]);
+            if (!empty($promptAttr) && !empty(trim($promptAttr->value))) {
+                $isAIInterview = true;
+            }
+        }
+
+        if (!$isAIInterview) {
+            return;
+        }
+
+        // Load question attributes
+        $prompt    = $this->getQuestionAttribute($questionId, 'ai_interview_prompt',    $this->getDefaultPrompt());
+        $maxTokens = (int) $this->getQuestionAttribute($questionId, 'ai_interview_max_tokens', 6000);
+        $mandatory = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mandatory', '0');
+
+        $ajaxUrl  = Yii::app()->createUrl('plugins/direct', [
+            'plugin'   => 'AIInterview',
+            'function' => 'chat',
+        ]);
+
+        $surveyId = (int) $oQuestion->sid;
+        $language = $this->getSessionLanguage($surveyId);
+
+        // Use the sgqa from the event if available (more reliable than constructing it)
+        $sgqa = (string) $event->get('sgqa');
+        if (empty($sgqa)) {
+            $sgqa = $surveyId . 'X' . $oQuestion->gid . 'X' . $questionId;
+        }
+
+        // Register CSS and JS assets
+        $assetPath = dirname(__FILE__) . '/assets';
+        $assetUrl  = Yii::app()->assetManager->publish($assetPath);
+
+        Yii::app()->clientScript->registerCssFile(
+            $assetUrl . '/ai-interview.css',
+            'screen'
+        );
+        Yii::app()->clientScript->registerScriptFile(
+            $assetUrl . '/ai-interview.js',
+            CClientScript::POS_END
+        );
+
+        // Build the widget HTML for injection via JS
+        $widgetHtml = $this->buildWidgetHtml(
+            $sgqa,
+            $surveyId,
+            $ajaxUrl,
+            $prompt,
+            $maxTokens,
+            $language,
+            $mandatory,
+            ''
+        );
+
+        // Escape the widget HTML for embedding in a JS string
+        $widgetHtmlJs = json_encode($widgetHtml);
+
+        $eSgqa = json_encode($sgqa);
+
+        // Inject a script that replaces the textarea with the widget after DOM load.
+        // The script checks if the widget already exists (from afterRenderQuestion)
+        // to avoid double-initialisation.
+        $script = <<<JS
+(function() {
+    function aiInterviewInit() {
+        var sgqa = {$eSgqa};
+        // Skip if widget already injected by afterRenderQuestion
+        if (document.getElementById('ai-interview-widget-' + sgqa)) {
+            return;
+        }
+        // Find the standard textarea for this question
+        var textarea = document.getElementById('answer' + sgqa);
+        if (!textarea) {
+            // Try by name attribute
+            textarea = document.querySelector('textarea[name="' + sgqa + '"]');
+        }
+        if (textarea) {
+            var wrapper = document.createElement('div');
+            wrapper.innerHTML = {$widgetHtmlJs};
+            var widget = wrapper.firstElementChild;
+            // Restore any existing answer value
+            var answerField = widget.querySelector('.ai-interview-answer-field');
+            if (answerField && textarea.value) {
+                answerField.value = textarea.value;
+            }
+            textarea.parentNode.replaceChild(widget, textarea);
+        }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', aiInterviewInit);
+    } else {
+        aiInterviewInit();
+    }
+}());
+JS;
+
+        Yii::app()->clientScript->registerScript(
+            'ai-interview-init-' . $questionId,
+            $script,
+            CClientScript::POS_END
+        );
+    }
+
+    /**
+     * Get a question attribute value, with a fallback default.
+     */
+    private function getQuestionAttribute(int $questionId, string $attribute, $default = '')
+    {
+        $attr = QuestionAttribute::model()->findByAttributes([
+            'qid'       => $questionId,
+            'attribute' => $attribute,
+        ]);
+        if (!empty($attr) && $attr->value !== null && $attr->value !== '') {
+            return $attr->value;
+        }
+        return $default;
+    }
+
+    /**
+     * Build the full HTML for the AI Interview widget.
+     *
+     * @param string $sgqa       SGQA field name
+     * @param int    $surveyId   Survey ID
+     * @param string $ajaxUrl    URL for the server-side OpenAI proxy
+     * @param string $prompt     AI system prompt
+     * @param int    $maxTokens  Maximum token budget
+     * @param string $language   BCP-47 language code
+     * @param string $mandatory  '1' if mandatory, '0' otherwise
+     * @param string $dispVal    Previously saved answer (for back-navigation)
+     * @return string            HTML for the widget
+     */
+    private function buildWidgetHtml(
+        string $sgqa,
+        int    $surveyId,
+        string $ajaxUrl,
+        string $prompt,
+        int    $maxTokens,
+        string $language,
+        string $mandatory,
+        string $dispVal
+    ): string {
+        $eSgqa      = htmlspecialchars($sgqa,      ENT_QUOTES, 'UTF-8');
+        $eAjaxUrl   = htmlspecialchars($ajaxUrl,   ENT_QUOTES, 'UTF-8');
+        $ePrompt    = htmlspecialchars($prompt,    ENT_QUOTES, 'UTF-8');
+        $eLanguage  = htmlspecialchars($language,  ENT_QUOTES, 'UTF-8');
+        $eMandatory = htmlspecialchars($mandatory, ENT_QUOTES, 'UTF-8');
+        $eDispVal   = htmlspecialchars($dispVal,   ENT_QUOTES, 'UTF-8');
+
+        return <<<HTML
+<div class="ai-interview-widget"
+     id="ai-interview-widget-{$eSgqa}"
+     data-sgqa="{$eSgqa}"
+     data-survey-id="{$surveyId}"
+     data-ajax-url="{$eAjaxUrl}"
+     data-prompt="{$ePrompt}"
+     data-max-tokens="{$maxTokens}"
+     data-language="{$eLanguage}"
+     data-mandatory="{$eMandatory}">
+
+    <!-- Chat message display area -->
+    <div class="ai-interview-messages"
+         id="ai-messages-{$eSgqa}"
+         role="log"
+         aria-live="polite"
+         aria-label="Interview conversation">
+    </div>
+
+    <!-- Typing indicator -->
+    <div class="ai-interview-typing"
+         id="ai-typing-{$eSgqa}"
+         style="display:none;"
+         aria-live="polite">
+        <span class="ai-typing-dot"></span>
+        <span class="ai-typing-dot"></span>
+        <span class="ai-typing-dot"></span>
+        <span class="ai-typing-label">Interviewer is typing&hellip;</span>
+    </div>
+
+    <!-- Error banner -->
+    <div class="ai-interview-error"
+         id="ai-error-{$eSgqa}"
+         style="display:none;"
+         role="alert">
+        <span class="ai-error-text">The AI service is currently unavailable. You may skip this question or try again later.</span>
+        <button type="button"
+                class="ai-btn ai-btn-secondary ai-btn-skip"
+                data-sgqa="{$eSgqa}">
+            Skip this question
+        </button>
+    </div>
+
+    <!-- Token budget exhausted notice -->
+    <div class="ai-interview-token-warning"
+         id="ai-token-warning-{$eSgqa}"
+         style="display:none;"
+         role="status">
+        The interview has reached its maximum length and has been automatically concluded.
+    </div>
+
+    <!-- User input area -->
+    <div class="ai-interview-input-area" id="ai-input-area-{$eSgqa}">
+        <textarea
+            class="ai-interview-input"
+            id="ai-input-{$eSgqa}"
+            placeholder="Type your response here&hellip;"
+            rows="3"
+            aria-label="Type your response here&hellip;"
+        ></textarea>
+        <div class="ai-interview-actions">
+            <button type="button"
+                    class="ai-btn ai-btn-primary ai-btn-send"
+                    id="ai-send-{$eSgqa}"
+                    data-sgqa="{$eSgqa}">
+                Send
+            </button>
+            <button type="button"
+                    class="ai-btn ai-btn-finish ai-btn-finish-interview"
+                    id="ai-finish-{$eSgqa}"
+                    data-sgqa="{$eSgqa}"
+                    style="display:none;">
+                Finish Interview
+            </button>
+        </div>
+    </div>
+
+    <!--
+        Hidden textarea — holds the plain-text transcript.
+        Submitted with the survey form and stored by LimeSurvey as the answer.
+        LimeSurvey uses the sgqa code directly as the form field name.
+    -->
+    <textarea
+        name="{$eSgqa}"
+        id="answer{$eSgqa}"
+        class="ai-interview-answer-field"
+        style="display:none;"
+        aria-hidden="true"
+    >{$eDispVal}</textarea>
+
+    <!-- Running token counter (hidden, used by JS) -->
+    <input type="hidden" id="ai-tokens-used-{$eSgqa}" value="0" />
+
+</div>
+HTML;
     }
 
     // =========================================================================
@@ -405,17 +782,6 @@ class AIInterview extends PluginBase
         }
     }
 
-    /**
-     * Process an incoming chat message and proxy it to OpenAI.
-     *
-     * Expected JSON POST body:
-     * {
-     *   "surveyId":  123,
-     *   "messages":  [{"role":"system","content":"..."}, ...],
-     *   "maxTokens": 6000,
-     *   "language":  "en"
-     * }
-     */
     /**
      * Handle a reinstall request from an admin.
      * Accessible at: /index.php/plugins/direct?plugin=AIInterview&function=reinstall
