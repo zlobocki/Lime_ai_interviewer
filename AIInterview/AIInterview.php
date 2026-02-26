@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.2.0
+ * @version     1.3.0
  * @since       LimeSurvey 6.0
  */
 
@@ -899,14 +899,24 @@ HTML;
         $language  = isset($body['language'])  ? (string) $body['language']  : 'en';
 
         // Validate required fields
-        if ($surveyId <= 0 || empty($messages)) {
-            $this->sendJsonResponse(['error' => 'Missing required fields: surveyId and messages'], 400);
+        if (empty($messages)) {
+            $this->sendJsonResponse(['error' => 'Missing required field: messages'], 400);
             return;
         }
 
-        // Security: verify an active survey session exists for this survey
-        // This prevents the endpoint from being used outside of an active survey
-        if (!isset($_SESSION['survey_' . $surveyId])) {
+        // Security: verify an active survey session exists for this survey,
+        // OR that the requester is a logged-in LimeSurvey admin (for question preview).
+        // This prevents the endpoint from being used by anonymous users outside of a survey.
+        $isAdmin = false;
+        try {
+            $isAdmin = Permission::model()->hasGlobalPermission('surveys', 'read');
+        } catch (Exception $e) {
+            // Permission check failed — treat as non-admin
+        }
+
+        $hasSession = ($surveyId > 0 && isset($_SESSION['survey_' . $surveyId]));
+
+        if (!$hasSession && !$isAdmin) {
             $this->sendJsonResponse(['error' => 'No active survey session. Please start the survey first.'], 403);
             return;
         }
