@@ -5,21 +5,46 @@
  * This Twig template overrides the Long Free Text (T) answer rendering
  * for questions using the AIInterview question theme.
  *
- * The plugin (AIInterview.php) injects the prompt and settings via
- * the beforeQuestionRender event (as data attributes on the widget div).
+ * The plugin (AIInterview.php) also injects the prompt and settings via
+ * the afterRenderQuestion event (as data attributes on the widget div).
+ * This template also outputs them directly so the widget works in
+ * question preview mode (admin) where the PHP event may not fire.
  *
  * Variables available from LimeSurvey core (longfreetext context):
- * @var name        SGQA field name (used as the form field name for the answer)
- * @var dispVal     Previously saved answer value (for back-navigation)
- * @var extraclass  Extra CSS classes
- * @var coreClass   Core CSS class
- * @var basename    Base name (same as name for simple questions)
+ * @var name              SGQA field name (used as the form field name for the answer)
+ * @var dispVal           Previously saved answer value (for back-navigation)
+ * @var extraclass        Extra CSS classes
+ * @var coreClass         Core CSS class
+ * @var basename          Base name (same as name for simple questions)
+ * @var question_attributes  Array of per-question attribute values (LimeSurvey 6.x)
+ * @var surveyid          Survey ID (available in survey context; 0 in preview)
  */
 #}
 
+{# Read per-question attributes from the Twig context (available in LimeSurvey 6.x themes) #}
+{% set ai_prompt     = question_attributes.ai_interview_prompt    ?? '' %}
+{% set ai_max_tokens = question_attributes.ai_interview_max_tokens ?? 6000 %}
+{% set ai_mandatory  = question_attributes.ai_interview_mandatory  ?? 0 %}
+{% set ai_survey_id  = surveyid ?? 0 %}
+
+{#
+  Build the AJAX URL for the server-side OpenAI proxy.
+  createUrl() is available as a Twig global in LimeSurvey 6.x.
+  If it is not available (e.g. in some preview contexts), the PHP plugin's
+  afterRenderQuestion event will have already registered the assets, and the
+  JS falls back to reading the URL from the data attribute set by PHP.
+#}
+{% set ai_ajax_url = createUrl('plugins/direct', {'plugin': 'AIInterview', 'function': 'chat'}) %}
+
 <div class="ai-interview-widget {{ extraclass }}"
      id="ai-interview-widget-{{ name }}"
-     data-sgqa="{{ name }}">
+     data-sgqa="{{ name }}"
+     data-survey-id="{{ ai_survey_id }}"
+     data-ajax-url="{{ ai_ajax_url }}"
+     data-prompt="{{ ai_prompt | e('html_attr') }}"
+     data-max-tokens="{{ ai_max_tokens }}"
+     data-language="{{ surveyLanguage ?? app.language ?? 'en' }}"
+     data-mandatory="{{ ai_mandatory }}">
 
     <!-- Chat message display area -->
     <div class="ai-interview-messages"
@@ -91,8 +116,6 @@
         Hidden textarea — holds the plain-text transcript.
         Submitted with the survey form and stored by LimeSurvey as the answer.
         LimeSurvey uses the sgqa code directly as the form field name.
-        The plugin injects data-prompt, data-max-tokens, data-survey-id,
-        data-ajax-url, data-language, and data-mandatory via beforeQuestionRender.
     -->
     <textarea
         name="{{ name }}"

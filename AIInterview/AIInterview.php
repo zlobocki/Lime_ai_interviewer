@@ -65,8 +65,11 @@ class AIInterview extends PluginBase
         // Per-question attribute registration (shown in question editor Advanced tab)
         $this->subscribe('newQuestionAttributes');
 
-        // Inject configuration data attributes into the rendered widget HTML
-        $this->subscribe('beforeQuestionRender');
+        // Inject configuration data attributes into the rendered widget HTML.
+        // afterRenderQuestion fires after the Twig template has produced HTML,
+        // so the widget div exists and we can inject data attributes via regex.
+        // This also fires in question preview mode (admin), unlike beforeQuestionRender.
+        $this->subscribe('afterRenderQuestion');
 
         // Admin notification if theme is not properly registered
         $this->subscribe('newAdminMenu');
@@ -327,22 +330,23 @@ class AIInterview extends PluginBase
     // =========================================================================
 
     /**
-     * After the Twig template renders the AI Interview widget, inject the
-     * configuration data attributes (prompt, maxTokens, surveyId, ajaxUrl,
-     * language, mandatory) into the widget div.
+     * After the Twig template renders the AI Interview widget, register the
+     * CSS/JS assets so they are loaded on the page.
      *
-     * This is called for ALL questions of type T; we only act on questions
-     * that use the AIInterview question theme.
+     * The data attributes (prompt, maxTokens, surveyId, ajaxUrl, language,
+     * mandatory) are now output directly by the Twig template using the
+     * question_attributes variable, so they are present in both live survey
+     * and question preview (admin) modes.
+     *
+     * This event fires after the Twig template has produced HTML, so it is
+     * the correct place to register assets. It also fires in preview mode.
+     *
+     * This is called for ALL questions; we only act on questions that use
+     * the AIInterview question theme.
      */
-    public function beforeQuestionRender()
+    public function afterRenderQuestion()
     {
         $event = $this->getEvent();
-
-        // Only handle Long Free Text questions (type T)
-        $type = $event->get('type');
-        if ($type !== 'T') {
-            return;
-        }
 
         $questionId = (int) $event->get('qid');
 
@@ -352,61 +356,10 @@ class AIInterview extends PluginBase
             return;
         }
 
-        $surveyId   = (int) $event->get('surveyId');
-        $sgqaCode   = (string) $event->get('code');
-
-        // Retrieve per-question attributes
-        $attributes = QuestionAttribute::model()->getQuestionAttributes($questionId);
-
-        $prompt    = isset($attributes['ai_interview_prompt'])
-                     ? trim((string) $attributes['ai_interview_prompt'])
-                     : $this->getDefaultPrompt();
-
-        $maxTokens = isset($attributes['ai_interview_max_tokens'])
-                     ? max(500, (int) $attributes['ai_interview_max_tokens'])
-                     : 6000;
-
-        $mandatory = isset($attributes['ai_interview_mandatory'])
-                     ? (int) $attributes['ai_interview_mandatory']
-                     : 0;
-
-        // Detect the active survey language for this session
-        $language = $this->getSessionLanguage($surveyId);
-
-        // Build the AJAX URL for the server-side OpenAI proxy
-        $ajaxUrl = Yii::app()->createUrl(
-            'plugins/direct',
-            ['plugin' => 'AIInterview', 'function' => 'chat']
-        );
-
-        // Escape values for HTML attributes
-        $ePrompt   = htmlspecialchars($prompt,   ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $eAjaxUrl  = htmlspecialchars($ajaxUrl,  ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $eLanguage = htmlspecialchars($language, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-
-        // Inject data attributes into the widget div by modifying the rendered HTML.
-        // The Twig template renders <div class="ai-interview-widget ... " data-sgqa="...">
-        // We add the configuration data attributes to this div.
-        $answers = (string) $event->get('answers');
-
-        $dataAttrs = ' data-survey-id="' . $surveyId . '"'
-                   . ' data-ajax-url="' . $eAjaxUrl . '"'
-                   . ' data-prompt="' . $ePrompt . '"'
-                   . ' data-max-tokens="' . $maxTokens . '"'
-                   . ' data-language="' . $eLanguage . '"'
-                   . ' data-mandatory="' . $mandatory . '"';
-
-        // Insert data attributes into the widget div opening tag
-        $answers = preg_replace(
-            '/(<div\s[^>]*class="[^"]*ai-interview-widget[^"]*"[^>]*)(>)/',
-            '$1' . $dataAttrs . '$2',
-            $answers,
-            1
-        );
-
-        $event->set('answers', $answers);
-
-        // Register CSS and JS assets
+        // Register CSS and JS assets from the plugin's assets/ directory.
+        // These are also declared in config.xml (for the question theme loader),
+        // but registering them here ensures they load even if the theme loader
+        // does not pick them up (e.g. in some preview contexts).
         $assetPath = dirname(__FILE__) . '/assets';
         $assetUrl  = Yii::app()->assetManager->publish($assetPath);
 
