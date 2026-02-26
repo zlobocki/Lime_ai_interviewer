@@ -104,8 +104,14 @@ When a respondent reaches an AI Interview question:
 
 1. Make sure the plugin is **activated** (not just installed)
 2. Go to **Admin → Configuration → Themes → Question Themes** and check if "AI Interview" is listed
-3. If not listed, try deactivating and reactivating the plugin
-4. Check that `upload/themes/question/AIInterview/` exists and contains `config.xml`
+3. If it is listed in Question Themes but not in the question type selector, try the **Reinstall** endpoint:
+   - Visit: `https://your-limesurvey.example.com/index.php/plugins/direct?plugin=AIInterview&function=reinstall`
+   - This forces re-registration of the theme without deactivating the plugin
+4. For detailed diagnostics, visit:
+   - `https://your-limesurvey.example.com/index.php/plugins/direct?plugin=AIInterview&function=debug`
+   - This returns JSON showing the DB record, file paths, and whether `config.xml` is readable
+5. If not listed in Question Themes, try deactivating and reactivating the plugin
+6. Check that `upload/themes/question/AIInterview/` exists and contains `config.xml`
 
 ### The chat widget shows "AI Interview is not configured"
 

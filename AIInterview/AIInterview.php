@@ -59,7 +59,7 @@ class AIInterview extends PluginBase
         $this->subscribe('beforeActivate');
         $this->subscribe('beforeDeactivate');
 
-        // Server-side AJAX proxy endpoint
+        // Server-side AJAX proxy endpoint (chat + debug)
         $this->subscribe('newDirectRequest');
 
         // Per-question attribute registration (shown in question editor Advanced tab)
@@ -67,6 +67,9 @@ class AIInterview extends PluginBase
 
         // Inject configuration data attributes into the rendered widget HTML
         $this->subscribe('beforeQuestionRender');
+
+        // Admin notification if theme is not properly registered
+        $this->subscribe('newAdminMenu');
     }
 
     // =========================================================================
@@ -105,36 +108,50 @@ class AIInterview extends PluginBase
     private function installQuestionTheme(): void
     {
         $rootDir   = Yii::app()->getConfig('rootdir');
+
+        // Get the user question theme root directory exactly as LimeSurvey stores it.
+        // We must NOT normalise this with realpath() because QuestionTheme::getQuestionMetaData()
+        // uses a substr() prefix comparison against this exact value to determine coreTheme.
+        // If we normalise and LimeSurvey doesn't, the comparison fails and the theme is
+        // silently skipped by findAllQuestionMetaDataForSelector().
         $uploadDir = Yii::app()->getConfig('userquestionthemerootdir');
 
-        // Resolve the upload directory (may be relative or absolute)
+        // Resolve relative paths to absolute (needed for file operations)
         if (!is_dir($uploadDir)) {
             $uploadDir = $rootDir . DIRECTORY_SEPARATOR . $uploadDir;
         }
 
         $sourceDir = dirname(__FILE__) . DIRECTORY_SEPARATOR . 'question_themes' . DIRECTORY_SEPARATOR . 'AIInterview';
-        $destDir   = $uploadDir . DIRECTORY_SEPARATOR . 'AIInterview';
+        $destDir   = rtrim($uploadDir, '/\\') . DIRECTORY_SEPARATOR . 'AIInterview';
 
         // Copy theme files to upload/themes/question/AIInterview/
         $this->copyDirectory($sourceDir, $destDir);
 
-        // Register the theme in the database (if not already registered)
-        $existing = QuestionTheme::model()->findByAttributes(['name' => 'AIInterview']);
-        if (!empty($existing)) {
-            // Already registered — update the xml_path in case the install path changed
-            $existing->xml_path = $destDir;
-            $existing->save(false);
-            return;
+        // Verify the config.xml was copied successfully
+        if (!is_file($destDir . DIRECTORY_SEPARATOR . 'config.xml')) {
+            Yii::log(
+                'AIInterview: ERROR — config.xml not found at ' . $destDir
+                . ' after copy. Theme will not appear in the question type selector.',
+                CLogger::LEVEL_ERROR
+            );
         }
 
-        // Determine whether a base T theme already exists in the DB.
-        // If yes, our theme must set extends='T' so it appears as a variant.
-        // If no (unlikely), we register as the base T theme.
-        $baseT = QuestionTheme::model()->findAll(
-            'question_type = :qt AND extends = :ext',
-            [':qt' => 'T', ':ext' => '']
-        );
-        $extends = empty($baseT) ? '' : 'T';
+        // Delete any existing DB record so we always re-register with the correct path.
+        // This handles the case where the plugin was previously installed with a different
+        // path (e.g., before a LimeSurvey migration or directory change).
+        $existing = QuestionTheme::model()->findByAttributes(['name' => 'AIInterview']);
+        if (!empty($existing)) {
+            $existing->delete();
+        }
+
+        // We use a direct DB insert rather than importManifest() because:
+        // 1. importManifest() sets extends='T' (since a base T theme exists), which makes
+        //    the theme appear only as a hidden variant of T in the selector, not as a
+        //    standalone entry.
+        // 2. We want extends='' so the theme appears as its own entry in the selector grid.
+        //    With extends='', LimeSurvey falls back to the core T theme for any templates
+        //    our theme does not provide (question wrapper, help text, etc.).
+        $extends = '';
 
         // Build the settings JSON (mirrors what getMetaDataArray produces)
         $settings = json_encode([
@@ -177,6 +194,8 @@ class AIInterview extends PluginBase
                 'AIInterview: Failed to register question theme: ' . json_encode($oTheme->errors),
                 CLogger::LEVEL_WARNING
             );
+        } else {
+            Yii::log('AIInterview: Question theme registered via direct DB insert', CLogger::LEVEL_INFO);
         }
     }
 
@@ -192,6 +211,34 @@ class AIInterview extends PluginBase
             } catch (Exception $e) {
                 Yii::log('AIInterview: Failed to uninstall question theme: ' . $e->getMessage(), CLogger::LEVEL_WARNING);
             }
+        }
+    }
+
+    /**
+     * Add a "Reinstall AI Interview Theme" link to the admin menu.
+     * This allows admins to force re-registration of the question theme
+     * without deactivating/reactivating the plugin.
+     */
+    public function newAdminMenu()
+    {
+        $event = $this->getEvent();
+
+        // Check if the theme is properly registered
+        $oTheme = QuestionTheme::model()->findByAttributes(['name' => 'AIInterview']);
+        $xmlOk  = !empty($oTheme) && is_file($oTheme->xml_path . DIRECTORY_SEPARATOR . 'config.xml');
+
+        if (!$xmlOk) {
+            // Theme is not properly registered — add a warning menu item
+            $menuItems = $event->get('menuItems') ?? [];
+            $menuItems[] = [
+                'label' => 'AIInterview: Theme not registered — click to reinstall',
+                'href'  => Yii::app()->createUrl(
+                    'plugins/direct',
+                    ['plugin' => 'AIInterview', 'function' => 'reinstall']
+                ),
+                'class' => 'warning',
+            ];
+            $event->set('menuItems', $menuItems);
         }
     }
 
@@ -386,12 +433,117 @@ class AIInterview extends PluginBase
         $event    = $this->getEvent();
         $function = $event->get('function');
 
-        if ($function !== 'chat') {
+        if ($function === 'chat') {
+            $this->handleChatRequest();
+            $event->set('success', true);
             return;
         }
 
-        $this->handleChatRequest();
-        $event->set('success', true);
+        if ($function === 'reinstall') {
+            $this->handleReinstallRequest();
+            $event->set('success', true);
+            return;
+        }
+
+        if ($function === 'debug') {
+            $this->handleDebugRequest();
+            $event->set('success', true);
+            return;
+        }
+    }
+
+    /**
+     * Process an incoming chat message and proxy it to OpenAI.
+     *
+     * Expected JSON POST body:
+     * {
+     *   "surveyId":  123,
+     *   "messages":  [{"role":"system","content":"..."}, ...],
+     *   "maxTokens": 6000,
+     *   "language":  "en"
+     * }
+     */
+    /**
+     * Handle a reinstall request from an admin.
+     * Accessible at: /index.php/plugins/direct?plugin=AIInterview&function=reinstall
+     * Requires admin login (LimeSurvey checks this for direct requests).
+     */
+    private function handleReinstallRequest(): void
+    {
+        // Only allow GET requests from admins
+        if (!Permission::model()->hasGlobalPermission('superadmin', 'read')) {
+            $this->sendJsonResponse(['error' => 'Unauthorized'], 403);
+            return;
+        }
+
+        $this->installQuestionTheme();
+
+        $oTheme = QuestionTheme::model()->findByAttributes(['name' => 'AIInterview']);
+        $xmlOk  = !empty($oTheme) && is_file($oTheme->xml_path . DIRECTORY_SEPARATOR . 'config.xml');
+
+        $this->sendJsonResponse([
+            'success'    => true,
+            'registered' => !empty($oTheme),
+            'xml_ok'     => $xmlOk,
+            'xml_path'   => !empty($oTheme) ? $oTheme->xml_path : null,
+            'extends'    => !empty($oTheme) ? $oTheme->extends  : null,
+            'message'    => $xmlOk
+                ? 'Theme reinstalled successfully. Refresh the question type selector.'
+                : 'Theme registered in DB but config.xml not found at xml_path. Check file permissions.',
+        ]);
+    }
+
+    /**
+     * Return diagnostic information about the theme registration.
+     * Accessible at: /index.php/plugins/direct?plugin=AIInterview&function=debug
+     */
+    private function handleDebugRequest(): void
+    {
+        if (!Permission::model()->hasGlobalPermission('superadmin', 'read')) {
+            $this->sendJsonResponse(['error' => 'Unauthorized'], 403);
+            return;
+        }
+
+        $rootDir   = Yii::app()->getConfig('rootdir');
+        $uploadDir = Yii::app()->getConfig('userquestionthemerootdir');
+
+        if (!is_dir($uploadDir)) {
+            $uploadDir = $rootDir . DIRECTORY_SEPARATOR . $uploadDir;
+        }
+
+        $destDir = rtrim($uploadDir, '/\\') . DIRECTORY_SEPARATOR . 'AIInterview';
+        $oTheme  = QuestionTheme::model()->findByAttributes(['name' => 'AIInterview']);
+
+        $allThemes = QuestionTheme::model()->findAll(['condition' => "visible='Y'"]);
+        $themeList = [];
+        foreach ($allThemes as $t) {
+            $themeList[] = [
+                'name'          => $t->name,
+                'question_type' => $t->question_type,
+                'extends'       => $t->extends,
+                'xml_path'      => $t->xml_path,
+                'xml_exists'    => is_file($t->xml_path . DIRECTORY_SEPARATOR . 'config.xml'),
+            ];
+        }
+
+        $this->sendJsonResponse([
+            'userquestionthemerootdir' => Yii::app()->getConfig('userquestionthemerootdir'),
+            'resolved_uploadDir'       => $uploadDir,
+            'expected_destDir'         => $destDir,
+            'destDir_exists'           => is_dir($destDir),
+            'config_xml_exists'        => is_file($destDir . DIRECTORY_SEPARATOR . 'config.xml'),
+            'db_record'                => !empty($oTheme) ? [
+                'id'            => $oTheme->id,
+                'name'          => $oTheme->name,
+                'xml_path'      => $oTheme->xml_path,
+                'extends'       => $oTheme->extends,
+                'question_type' => $oTheme->question_type,
+                'visible'       => $oTheme->visible,
+                'core_theme'    => $oTheme->core_theme,
+                'xml_exists'    => is_file($oTheme->xml_path . DIRECTORY_SEPARATOR . 'config.xml'),
+            ] : null,
+            'all_visible_themes'       => $themeList,
+        ]);
     }
 
     /**
