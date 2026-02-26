@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.3.0
+ * @version     1.4.0
  * @since       LimeSurvey 6.0
  */
 
@@ -780,6 +780,12 @@ HTML;
             $event->set('success', true);
             return;
         }
+
+        if ($function === 'testchat') {
+            $this->handleTestChatRequest();
+            $event->set('success', true);
+            return;
+        }
     }
 
     /**
@@ -866,6 +872,35 @@ HTML;
     }
 
     /**
+     * Test endpoint — verifies the plugin endpoint is reachable and the API key is set.
+     * Accessible at: /index.php/plugins/direct?plugin=AIInterview&function=testchat
+     * Does NOT call OpenAI — just returns configuration status.
+     */
+    private function handleTestChatRequest(): void
+    {
+        $apiKey = trim((string) $this->get('openai_api_key', null, null, ''));
+        $model  = trim((string) $this->get('openai_model',   null, null, 'gpt-4o'));
+
+        $isAdmin = false;
+        try {
+            $isAdmin = Permission::model()->hasGlobalPermission('surveys', 'read');
+        } catch (Exception $e) {
+            // ignore
+        }
+
+        $this->sendJsonResponse([
+            'status'       => 'ok',
+            'endpoint'     => 'AIInterview chat endpoint is reachable',
+            'method'       => $_SERVER['REQUEST_METHOD'] ?? 'unknown',
+            'api_key_set'  => !empty($apiKey),
+            'model'        => $model ?: 'gpt-4o',
+            'is_admin'     => $isAdmin,
+            'php_version'  => PHP_VERSION,
+            'curl_enabled' => function_exists('curl_init'),
+        ]);
+    }
+
+    /**
      * Process an incoming chat message and proxy it to OpenAI.
      *
      * Expected JSON POST body:
@@ -878,18 +913,24 @@ HTML;
      */
     private function handleChatRequest(): void
     {
-        // Only accept POST requests
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            $this->sendJsonResponse(['error' => 'Method not allowed'], 405);
+        // Accept both POST and GET (LimeSurvey may route differently in some versions)
+        // For GET requests, parameters come from $_GET; for POST, from php://input
+        $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+
+        if ($method === 'POST') {
+            $rawBody = file_get_contents('php://input');
+            $body    = json_decode($rawBody, true);
+        } else {
+            // Fallback: try to read from query string (for debugging)
+            $this->sendJsonResponse(['error' => 'Method not allowed. Use POST.'], 405);
             return;
         }
 
-        // Parse JSON body
-        $rawBody = file_get_contents('php://input');
-        $body    = json_decode($rawBody, true);
-
         if (!is_array($body)) {
-            $this->sendJsonResponse(['error' => 'Invalid JSON body'], 400);
+            // Try to parse as form data if JSON fails
+            $rawBody = file_get_contents('php://input');
+            Yii::log('AIInterview: Invalid JSON body. Raw: ' . substr($rawBody, 0, 200), CLogger::LEVEL_WARNING);
+            $this->sendJsonResponse(['error' => 'Invalid JSON body. Received: ' . substr($rawBody, 0, 100)], 400);
             return;
         }
 

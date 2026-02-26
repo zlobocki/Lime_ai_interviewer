@@ -5,7 +5,7 @@
  * Communicates with the server-side OpenAI proxy endpoint.
  * The API key is NEVER present in this file or in the page HTML.
  *
- * @version 1.1.0
+ * @version 1.2.0
  */
 
 (function () {
@@ -17,6 +17,9 @@
 
     function initAllWidgets() {
         var widgets = document.querySelectorAll('.ai-interview-widget');
+        if (widgets.length === 0) {
+            console.log('AIInterview: No widgets found on page.');
+        }
         widgets.forEach(function (widget) {
             initWidget(widget);
         });
@@ -41,6 +44,15 @@
         var prompt     = widget.dataset.prompt || '';
         var maxTokens  = parseInt(widget.dataset.maxTokens, 10) || 6000;
 
+        console.log('AIInterview: Initialising widget', {
+            sgqa: sgqa,
+            ajaxUrl: ajaxUrl,
+            surveyId: surveyId,
+            language: language,
+            maxTokens: maxTokens,
+            hasPrompt: !!prompt
+        });
+
         // DOM references — all keyed by SGQA code
         var messagesEl    = document.getElementById('ai-messages-'      + sgqa);
         var typingEl      = document.getElementById('ai-typing-'        + sgqa);
@@ -55,7 +67,12 @@
 
         // Validate required DOM elements
         if (!messagesEl || !inputEl || !sendBtn || !answerField) {
-            console.warn('AIInterview: Missing required DOM elements for widget', sgqa);
+            console.warn('AIInterview: Missing required DOM elements for widget', sgqa, {
+                messagesEl: !!messagesEl,
+                inputEl: !!inputEl,
+                sendBtn: !!sendBtn,
+                answerField: !!answerField
+            });
             return;
         }
 
@@ -218,13 +235,22 @@
                 language:  language
             });
 
+            console.log('AIInterview: Sending request to', ajaxUrl, 'surveyId=', sid);
+
             var xhr = new XMLHttpRequest();
             xhr.open('POST', ajaxUrl, true);
             xhr.setRequestHeader('Content-Type', 'application/json');
             xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
             xhr.timeout = 90000; // 90 second timeout
 
+            // Include CSRF token if available (required by LimeSurvey/Yii)
+            var csrfToken = getCsrfToken();
+            if (csrfToken) {
+                xhr.setRequestHeader('X-CSRF-Token', csrfToken);
+            }
+
             xhr.onload = function () {
+                console.log('AIInterview: Response status', xhr.status, 'body:', xhr.responseText.substring(0, 200));
                 if (xhr.status === 200) {
                     try {
                         var data = JSON.parse(xhr.responseText);
@@ -234,23 +260,27 @@
                             onSuccess(data.reply, data.tokensUsed || 0, data.finishReason || 'stop');
                         }
                     } catch (e) {
-                        onError('Unexpected response from server.');
+                        console.error('AIInterview: JSON parse error', e, xhr.responseText.substring(0, 500));
+                        onError('Unexpected response from server. Check browser console for details.');
                     }
                 } else {
                     try {
                         var errData = JSON.parse(xhr.responseText);
                         onError(errData.error || 'Server error (' + xhr.status + ')');
                     } catch (e) {
-                        onError('Server error (' + xhr.status + '). The AI service may be unavailable.');
+                        console.error('AIInterview: Non-JSON error response', xhr.status, xhr.responseText.substring(0, 500));
+                        onError('Server error (' + xhr.status + '). Check browser console for details.');
                     }
                 }
             };
 
             xhr.onerror = function () {
+                console.error('AIInterview: Network error');
                 onError('Network error. Please check your connection and try again.');
             };
 
             xhr.ontimeout = function () {
+                console.error('AIInterview: Request timed out');
                 onError('The request timed out. The AI service may be slow or unavailable.');
             };
 
@@ -345,6 +375,7 @@
         }
 
         function showError(msg) {
+            console.error('AIInterview: Error:', msg);
             if (errorEl) {
                 var errText = errorEl.querySelector('.ai-error-text');
                 if (errText) errText.textContent = msg;
@@ -404,6 +435,32 @@
         var sidInput = document.querySelector('input[name="sid"]');
         if (sidInput) return sidInput.value;
         return '0';
+    }
+
+    // =========================================================================
+    // Helper: get CSRF token for Yii/LimeSurvey
+    // =========================================================================
+
+    function getCsrfToken() {
+        // LimeSurvey / Yii stores the CSRF token in various places:
+
+        // 1. Meta tag (most reliable)
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta) return meta.getAttribute('content');
+
+        // 2. Hidden input in any form on the page
+        var csrfInput = document.querySelector('input[name="YII_CSRF_TOKEN"]');
+        if (csrfInput) return csrfInput.value;
+
+        // 3. LimeSurvey's global JS object
+        if (window.LS && window.LS.csrfToken) return window.LS.csrfToken;
+        if (window.ls && window.ls.csrfToken) return window.ls.csrfToken;
+
+        // 4. Cookie (Yii sets it as a cookie in some configurations)
+        var cookieMatch = document.cookie.match(/(?:^|;\s*)_csrf(?:-[^=]*)?\s*=\s*([^;]+)/);
+        if (cookieMatch) return decodeURIComponent(cookieMatch[1]);
+
+        return null;
     }
 
     // =========================================================================
