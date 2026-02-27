@@ -5,7 +5,7 @@
  * Communicates with the server-side OpenAI proxy endpoint.
  * The API key is NEVER present in this file or in the page HTML.
  *
- * @version 1.4.0
+ * @version 1.5.0
  */
 
 (function () {
@@ -267,7 +267,7 @@
 
         function callAI(onSuccess, onError) {
             var sid = surveyId ? parseInt(surveyId, 10) : 0;
-            var payload = JSON.stringify({
+            var jsonPayload = JSON.stringify({
                 surveyId:  sid,
                 messages:  conversationHistory,
                 maxTokens: maxTokens,
@@ -276,17 +276,20 @@
 
             console.log('AIInterview: Sending request to', ajaxUrl, 'surveyId=', sid);
 
+            // Build a form-encoded body so Yii's CSRF validation can find YII_CSRF_TOKEN
+            // as a POST parameter (Yii only checks $_POST, not request headers).
+            var csrfToken = getCsrfToken();
+            var bodyParts = ['payload=' + encodeURIComponent(jsonPayload)];
+            if (csrfToken) {
+                bodyParts.push('YII_CSRF_TOKEN=' + encodeURIComponent(csrfToken));
+            }
+            var body = bodyParts.join('&');
+
             var xhr = new XMLHttpRequest();
             xhr.open('POST', ajaxUrl, true);
-            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
             xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
             xhr.timeout = 90000; // 90 second timeout
-
-            // Include CSRF token if available (required by LimeSurvey/Yii)
-            var csrfToken = getCsrfToken();
-            if (csrfToken) {
-                xhr.setRequestHeader('X-CSRF-Token', csrfToken);
-            }
 
             xhr.onload = function () {
                 console.log('AIInterview: Response status', xhr.status, 'body:', xhr.responseText.substring(0, 200));
@@ -323,7 +326,7 @@
                 onError('The request timed out. The AI service may be slow or unavailable.');
             };
 
-            xhr.send(payload);
+            xhr.send(body);
         }
 
         function checkTokenBudget() {

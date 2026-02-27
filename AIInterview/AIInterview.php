@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.7.0
+ * @version     1.8.0
  * @since       LimeSurvey 6.0
  */
 
@@ -62,12 +62,6 @@ class AIInterview extends PluginBase
         // Server-side AJAX proxy endpoint (chat + debug)
         $this->subscribe('newDirectRequest');
 
-        // Disable CSRF validation for our plugin's direct requests.
-        // Yii's CSRF check runs before newDirectRequest fires and rejects JSON POST
-        // bodies because YII_CSRF_TOKEN is not present as a form field.
-        // We handle our own security (session check + admin check) inside handleChatRequest().
-        $this->subscribe('beforeControllerAction');
-
         // Per-question attribute registration (shown in question editor Advanced tab)
         $this->subscribe('newQuestionAttributes');
 
@@ -83,29 +77,6 @@ class AIInterview extends PluginBase
 
         // Admin notification if theme is not properly registered
         $this->subscribe('newAdminMenu');
-    }
-
-    /**
-     * Disable Yii CSRF validation for our plugin's direct request endpoint.
-     *
-     * LimeSurvey's CSRF check runs before newDirectRequest fires. When the
-     * browser sends a JSON POST body, YII_CSRF_TOKEN is not present as a form
-     * field, so Yii rejects the request with 400 "The CSRF token could not be
-     * verified." before our handler even runs.
-     *
-     * We disable CSRF only for requests that target this plugin's direct
-     * endpoint. Our own security checks (survey session + admin permission)
-     * inside handleChatRequest() provide equivalent protection.
-     */
-    public function beforeControllerAction()
-    {
-        $plugin  = Yii::app()->request->getParam('plugin');
-        $route   = Yii::app()->getUrlManager()->parseUrl(Yii::app()->request);
-
-        // Only disable CSRF for /plugins/direct?plugin=AIInterview requests
-        if ($plugin === 'AIInterview' && strpos($route, 'plugins/direct') !== false) {
-            Yii::app()->request->enableCsrfValidation = false;
-        }
     }
 
     // =========================================================================
@@ -953,7 +924,11 @@ HTML;
     /**
      * Process an incoming chat message and proxy it to OpenAI.
      *
-     * Expected JSON POST body:
+     * Expected POST body (application/x-www-form-urlencoded):
+     *   payload=<JSON-encoded object>
+     *   YII_CSRF_TOKEN=<token>   (satisfies Yii CSRF validation)
+     *
+     * The JSON payload object:
      * {
      *   "surveyId":  123,
      *   "messages":  [{"role":"system","content":"..."}, ...],
@@ -963,24 +938,28 @@ HTML;
      */
     private function handleChatRequest(): void
     {
-        // Accept both POST and GET (LimeSurvey may route differently in some versions)
-        // For GET requests, parameters come from $_GET; for POST, from php://input
         $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 
-        if ($method === 'POST') {
-            $rawBody = file_get_contents('php://input');
-            $body    = json_decode($rawBody, true);
-        } else {
-            // Fallback: try to read from query string (for debugging)
+        if ($method !== 'POST') {
             $this->sendJsonResponse(['error' => 'Method not allowed. Use POST.'], 405);
             return;
         }
 
+        // Read the JSON payload from the form-encoded 'payload' field.
+        // The JS sends application/x-www-form-urlencoded so that Yii's CSRF
+        // validation can find YII_CSRF_TOKEN as a $_POST parameter.
+        $rawPayload = isset($_POST['payload']) ? $_POST['payload'] : '';
+
+        // Fallback: if the request was sent as raw JSON (old behaviour), read php://input
+        if ($rawPayload === '') {
+            $rawPayload = file_get_contents('php://input');
+        }
+
+        $body = json_decode($rawPayload, true);
+
         if (!is_array($body)) {
-            // Try to parse as form data if JSON fails
-            $rawBody = file_get_contents('php://input');
-            Yii::log('AIInterview: Invalid JSON body. Raw: ' . substr($rawBody, 0, 200), CLogger::LEVEL_WARNING);
-            $this->sendJsonResponse(['error' => 'Invalid JSON body. Received: ' . substr($rawBody, 0, 100)], 400);
+            Yii::log('AIInterview: Invalid JSON payload. Raw: ' . substr($rawPayload, 0, 200), CLogger::LEVEL_WARNING);
+            $this->sendJsonResponse(['error' => 'Invalid JSON payload. Received: ' . substr($rawPayload, 0, 100)], 400);
             return;
         }
 
