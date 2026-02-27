@@ -1,139 +1,20 @@
 {#
 /**
- * AI Interview question type — answer widget
+ * AI Interview question type — answer template
  *
- * This Twig template overrides the Long Free Text (T) answer rendering
- * for questions using the AIInterview question theme.
+ * This template renders the standard Long Free Text textarea.
+ * The AIInterview plugin's afterRenderQuestion event handler then
+ * replaces this textarea with the AI chat widget.
  *
- * The plugin (AIInterview.php) also injects the prompt and settings via
- * the afterRenderQuestion event (as data attributes on the widget div).
- * This template also outputs them directly so the widget works in
- * question preview mode (admin) where the PHP event may not fire.
- *
- * Variables available from LimeSurvey core (longfreetext context):
- * @var name              SGQA field name (used as the form field name for the answer)
- * @var dispVal           Previously saved answer value (for back-navigation)
- * @var extraclass        Extra CSS classes
- * @var coreClass         Core CSS class
- * @var basename          Base name (same as name for simple questions)
- * @var question_attributes  Array of per-question attribute values (LimeSurvey 6.x)
- * @var surveyid          Survey ID (available in survey context; 0 in preview)
+ * We intentionally render only the plain textarea here (not the widget)
+ * to avoid dual-rendering issues. The PHP plugin handles all widget
+ * injection via afterRenderQuestion.
  */
 #}
-
-{# Read per-question attributes from the Twig context (available in LimeSurvey 6.x themes) #}
-{% set ai_prompt     = question_attributes.ai_interview_prompt    ?? '' %}
-{% set ai_max_tokens = question_attributes.ai_interview_max_tokens ?? 6000 %}
-{% set ai_mandatory  = question_attributes.ai_interview_mandatory  ?? 0 %}
-{% set ai_survey_id  = surveyid ?? 0 %}
-
-{#
-  Build the AJAX URL for the server-side OpenAI proxy.
-  createUrl() is available as a Twig global in LimeSurvey 6.x.
-  If it is not available (e.g. in some preview contexts), the PHP plugin's
-  afterRenderQuestion event will have already registered the assets, and the
-  JS falls back to reading the URL from the data attribute set by PHP.
-#}
-{% set ai_ajax_url = createUrl('plugins/direct', {'plugin': 'AIInterview', 'function': 'chat'}) %}
-
-<div class="ai-interview-widget {{ extraclass }}"
-     id="ai-interview-widget-{{ name }}"
-     data-sgqa="{{ name }}"
-     data-survey-id="{{ ai_survey_id }}"
-     data-ajax-url="{{ ai_ajax_url }}"
-     data-prompt="{{ ai_prompt | e('html_attr') }}"
-     data-max-tokens="{{ ai_max_tokens }}"
-     data-language="{{ surveyLanguage ?? app.language ?? 'en' }}"
-     data-mandatory="{{ ai_mandatory }}">
-
-    <!-- Chat message display area -->
-    <div class="ai-interview-messages"
-         id="ai-messages-{{ name }}"
-         role="log"
-         aria-live="polite"
-         aria-label="Interview conversation">
-    </div>
-
-    <!-- Typing indicator -->
-    <div class="ai-interview-typing"
-         id="ai-typing-{{ name }}"
-         style="display:none;"
-         aria-live="polite">
-        <span class="ai-typing-dot"></span>
-        <span class="ai-typing-dot"></span>
-        <span class="ai-typing-dot"></span>
-        <span class="ai-typing-label">Interviewer is typing…</span>
-    </div>
-
-    <!-- Error banner -->
-    <div class="ai-interview-error"
-         id="ai-error-{{ name }}"
-         style="display:none;"
-         role="alert">
-        <span class="ai-error-text">The AI service is currently unavailable. You may skip this question or try again later.</span>
-        <button type="button"
-                class="ai-btn ai-btn-secondary ai-btn-skip"
-                data-sgqa="{{ name }}">
-            Skip this question
-        </button>
-    </div>
-
-    <!-- Token budget exhausted notice -->
-    <div class="ai-interview-token-warning"
-         id="ai-token-warning-{{ name }}"
-         style="display:none;"
-         role="status">
-        The interview has reached its maximum length and has been automatically concluded.
-    </div>
-
-    <!-- User input area -->
-    <div class="ai-interview-input-area" id="ai-input-area-{{ name }}">
-        <textarea
-            class="ai-interview-input"
-            id="ai-input-{{ name }}"
-            placeholder="Type your response here…"
-            rows="3"
-            aria-label="Type your response here…"
-        ></textarea>
-        <div class="ai-interview-actions">
-            <button type="button"
-                    class="ai-btn ai-btn-primary ai-btn-send"
-                    id="ai-send-{{ name }}"
-                    data-sgqa="{{ name }}">
-                Send
-            </button>
-            <button type="button"
-                    class="ai-btn ai-btn-finish ai-btn-finish-interview"
-                    id="ai-finish-{{ name }}"
-                    data-sgqa="{{ name }}"
-                    style="display:none;">
-                Finish Interview
-            </button>
-        </div>
-    </div>
-
-    <!--
-        Hidden textarea — holds the plain-text transcript.
-        Submitted with the survey form and stored by LimeSurvey as the answer.
-        LimeSurvey uses the sgqa code directly as the form field name.
-
-        IMPORTANT: We use position:absolute / opacity:0 rather than display:none
-        so that LimeSurvey's mandatory-field JS validation can still find and
-        read the value of this element.  display:none causes some LimeSurvey
-        validation routines to skip the element entirely, making the Next button
-        appear to do nothing when the question is marked mandatory.
-    -->
-    <textarea
-        name="{{ name }}"
-        id="answer{{ name }}"
-        class="ai-interview-answer-field"
-        style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;overflow:hidden;"
-        tabindex="-1"
-        aria-hidden="true"
-        aria-labelledby="ls-question-text-{{ basename }}"
-    >{{ dispVal }}</textarea>
-
-    <!-- Running token counter (hidden, used by JS) -->
-    <input type="hidden" id="ai-tokens-used-{{ name }}" value="0" />
-
-</div>
+<textarea
+    name="{{ name }}"
+    id="answer{{ name }}"
+    class="ls-answers form-control ai-interview-placeholder"
+    rows="5"
+    aria-labelledby="ls-question-text-{{ basename }}"
+>{{ dispVal }}</textarea>
