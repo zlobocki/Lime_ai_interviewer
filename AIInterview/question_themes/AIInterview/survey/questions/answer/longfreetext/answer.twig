@@ -116,12 +116,19 @@
         Hidden textarea — holds the plain-text transcript.
         Submitted with the survey form and stored by LimeSurvey as the answer.
         LimeSurvey uses the sgqa code directly as the form field name.
+
+        IMPORTANT: We use position:absolute / opacity:0 rather than display:none
+        so that LimeSurvey's mandatory-field JS validation can still find and
+        read the value of this element.  display:none causes some LimeSurvey
+        validation routines to skip the element entirely, making the Next button
+        appear to do nothing when the question is marked mandatory.
     -->
     <textarea
         name="{{ name }}"
         id="answer{{ name }}"
         class="ai-interview-answer-field"
-        style="display:none;"
+        style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;overflow:hidden;"
+        tabindex="-1"
         aria-hidden="true"
         aria-labelledby="ls-question-text-{{ basename }}"
     >{{ dispVal }}</textarea>

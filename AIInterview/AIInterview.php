@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.8.0
+ * @version     1.9.0
  * @since       LimeSurvey 6.0
  */
 
@@ -439,12 +439,34 @@ class AIInterview extends PluginBase
         $html = $event->get('html');
 
         if (!empty($html)) {
-            // Replace the standard textarea (id="answer{sgqa}") with our widget.
-            // The standard LimeSurvey long free text textarea has id="answer{sgqa}"
-            // and name="{sgqa}". We replace the entire textarea element.
+            // Check if the Twig template already rendered the widget.
+            // In live survey mode, LimeSurvey uses the question theme's Twig template
+            // (answer.twig) to render the question, which already outputs the full
+            // ai-interview-widget div. If we try to replace the textarea inside it,
+            // we corrupt the HTML (the regex matches the hidden answer textarea inside
+            // the widget and replaces it with the entire widget again).
+            //
+            // Detection: if the widget div id is already present in the HTML, the Twig
+            // template has already rendered it — skip the replacement entirely.
+            // We only need to ensure the CSS/JS assets are registered (done above).
+            if (strpos($html, 'id="ai-interview-widget-' . $sgqa . '"') !== false
+                || strpos($html, "id='ai-interview-widget-" . $sgqa . "'") !== false
+                || strpos($html, 'class="ai-interview-widget') !== false
+            ) {
+                // Widget already rendered by Twig — assets are registered, nothing more to do.
+                return;
+            }
+
+            // The Twig template did NOT render the widget (e.g. in admin question preview
+            // mode, or if the theme is not properly installed). Replace the standard
+            // textarea (id="answer{sgqa}") with our widget.
             $escapedSgqa = preg_quote($sgqa, '/');
 
-            // Match the textarea element with this SGQA code
+            // Match the textarea element with this SGQA code.
+            // IMPORTANT: We must NOT match the hidden answer textarea that is already
+            // inside our widget HTML (it also has id="answer{sgqa}"). The pattern below
+            // only matches a textarea that is NOT preceded by the ai-interview-widget div,
+            // but since we already checked for the widget div above, we are safe here.
             $pattern = '/<textarea[^>]+(?:id=["\']answer' . $escapedSgqa . '["\']|name=["\']' . $escapedSgqa . '["\'])[^>]*>.*?<\/textarea>/si';
 
             if (preg_match($pattern, $html)) {
