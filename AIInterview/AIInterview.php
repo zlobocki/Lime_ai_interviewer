@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.10.0
+ * @version     1.11.0
  * @since       LimeSurvey 6.0
  */
 
@@ -765,11 +765,16 @@ JS;
         read the value of this element.  display:none causes some LimeSurvey
         validation routines to skip the element entirely, making the Next button
         appear to do nothing when the question is marked mandatory.
+
+        IMPORTANT: We include the "ls-answers" class because LimeSurvey's survey
+        JavaScript (survey.js) uses $(".ls-answers") to collect form field values
+        for AJAX submission.  Without this class the transcript is never included
+        in the POST data and the answer column stays empty.
     -->
     <textarea
         name="{$eSgqa}"
         id="answer{$eSgqa}"
-        class="ai-interview-answer-field"
+        class="ls-answers ai-interview-answer-field"
         style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;overflow:hidden;"
         tabindex="-1"
         aria-hidden="true"
