@@ -8,7 +8,7 @@
         <author>LimeSurvey AI Interview Plugin</author>
         <authorUrl>https://github.com/</authorUrl>
         <supportUrl>https://github.com/</supportUrl>
-        <version>1.0.0</version>
+        <version>1.12.0</version>
         <license>GPL v2</license>
         <description>
             <![CDATA[
@@ -36,6 +36,20 @@
             <label>OpenAI Model</label>
             <help>The OpenAI model to use (e.g. gpt-4o, gpt-4-turbo, gpt-3.5-turbo).</help>
             <default>gpt-4o</default>
+        </setting>
+        <setting>
+            <name>azure_speech_key</name>
+            <type>string</type>
+            <label>Azure Speech API Key</label>
+            <help>Azure AI Speech resource key (EU region). Used for voice transcription. Never exposed to respondents.</help>
+            <default></default>
+        </setting>
+        <setting>
+            <name>azure_speech_region</name>
+            <type>string</type>
+            <label>Azure Speech Region</label>
+            <help>EU region for speech processing, e.g. westeurope or polandcentral.</help>
+            <default>westeurope</default>
         </setting>
     </settings>
 </config>

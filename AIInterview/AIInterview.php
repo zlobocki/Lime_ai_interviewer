@@ -15,13 +15,13 @@
  *
  * Installation:
  *   1. Upload the AIInterview folder to <limesurvey>/plugins/
- *   2. Activate the plugin in Admin → Configuration → Plugin Manager
+ *   2. Activate the plugin in Admin â†’ Configuration â†’ Plugin Manager
  *   3. Enter your OpenAI API key in the plugin settings
  *   4. Create a new question and select "AI Interview" as the question type
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.11.0
+ * @version     1.12.0
  * @since       LimeSurvey 6.0
  */
 
@@ -48,6 +48,18 @@ class AIInterview extends PluginBase
             'help'    => 'The OpenAI model to use. Recommended: gpt-4o (best quality), gpt-4-turbo (fast), gpt-3.5-turbo (economical).',
             'default' => 'gpt-4o',
         ],
+        'azure_speech_key' => [
+            'type'    => 'string',
+            'label'   => 'Azure Speech API Key',
+            'help'    => 'Azure AI Speech resource key (EU region). Used for voice transcription. Never exposed to respondents.',
+            'default' => '',
+        ],
+        'azure_speech_region' => [
+            'type'    => 'string',
+            'label'   => 'Azure Speech Region',
+            'help'    => 'EU region for speech processing, e.g. westeurope or polandcentral.',
+            'default' => 'westeurope',
+        ],
     ];
 
     /**
@@ -55,7 +67,9 @@ class AIInterview extends PluginBase
      */
     public function init()
     {
-        // Plugin lifecycle hooks — install/uninstall the question theme
+        require_once dirname(__FILE__) . '/components/AzureSpeechClient.php';
+
+        // Plugin lifecycle hooks â€” install/uninstall the question theme
         $this->subscribe('beforeActivate');
         $this->subscribe('beforeDeactivate');
 
@@ -80,7 +94,7 @@ class AIInterview extends PluginBase
     }
 
     // =========================================================================
-    // PLUGIN LIFECYCLE — QUESTION THEME INSTALLATION
+    // PLUGIN LIFECYCLE â€” QUESTION THEME INSTALLATION
     // =========================================================================
 
     /**
@@ -137,7 +151,7 @@ class AIInterview extends PluginBase
         // Verify the config.xml was copied successfully
         if (!is_file($destDir . DIRECTORY_SEPARATOR . 'config.xml')) {
             Yii::log(
-                'AIInterview: ERROR — config.xml not found at ' . $destDir
+                'AIInterview: ERROR â€” config.xml not found at ' . $destDir
                 . ' after copy. Theme will not appear in the question type selector.',
                 CLogger::LEVEL_ERROR
             );
@@ -235,10 +249,10 @@ class AIInterview extends PluginBase
         $xmlOk  = !empty($oTheme) && is_file($oTheme->xml_path . DIRECTORY_SEPARATOR . 'config.xml');
 
         if (!$xmlOk) {
-            // Theme is not properly registered — add a warning menu item
+            // Theme is not properly registered â€” add a warning menu item
             $menuItems = $event->get('menuItems') ?? [];
             $menuItems[] = [
-                'label' => 'AIInterview: Theme not registered — click to reinstall',
+                'label' => 'AIInterview: Theme not registered â€” click to reinstall',
                 'href'  => Yii::app()->createUrl(
                     'plugins/direct',
                     ['plugin' => 'AIInterview', 'function' => 'reinstall']
@@ -317,8 +331,8 @@ class AIInterview extends PluginBase
                 'sortorder'=> 3,
                 'inputtype'=> 'singleselect',
                 'options'  => [
-                    '0' => gT('No – respondent may skip'),
-                    '1' => gT('Yes – respondent must send at least one message'),
+                    '0' => gT('No â€“ respondent may skip'),
+                    '1' => gT('Yes â€“ respondent must send at least one message'),
                 ],
                 'default'  => '0',
                 'help'     => gT('Whether the respondent must interact with the AI before they can proceed to the next page.'),
@@ -330,7 +344,7 @@ class AIInterview extends PluginBase
     }
 
     // =========================================================================
-    // QUESTION RENDERING — INJECT AI WIDGET INTO RENDERED HTML
+    // QUESTION RENDERING â€” INJECT AI WIDGET INTO RENDERED HTML
     // =========================================================================
 
     /**
@@ -445,7 +459,7 @@ class AIInterview extends PluginBase
             if (strpos($html, 'id="ai-interview-widget-' . $sgqa . '"') !== false
                 || strpos($html, "id='ai-interview-widget-" . $sgqa . "'") !== false
             ) {
-                // Widget already in HTML — assets are registered above, nothing more to do.
+                // Widget already in HTML â€” assets are registered above, nothing more to do.
                 return;
             }
 
@@ -481,7 +495,7 @@ class AIInterview extends PluginBase
             // (the hidden textarea in the widget will handle form submission)
             $event->set('html', $html . $widgetHtml);
         } else {
-            // No existing HTML — set the widget as the entire HTML
+            // No existing HTML â€” set the widget as the entire HTML
             $event->set('html', $widgetHtml);
         }
     }
@@ -584,7 +598,7 @@ class AIInterview extends PluginBase
         var sgqa = {$eSgqa};
         // Skip if widget already injected by afterRenderQuestion
         if (document.getElementById('ai-interview-widget-' + sgqa)) {
-            // Widget already in DOM — make sure it is initialised
+            // Widget already in DOM â€” make sure it is initialised
             if (typeof window.AIInterviewInitAll === 'function') {
                 window.AIInterviewInitAll();
             }
@@ -756,7 +770,7 @@ JS;
     </div>
 
     <!--
-        Hidden textarea — holds the plain-text transcript.
+        Hidden textarea â€” holds the plain-text transcript.
         Submitted with the survey form and stored by LimeSurvey as the answer.
         LimeSurvey uses the sgqa code directly as the form field name.
 
@@ -788,7 +802,7 @@ HTML;
     }
 
     // =========================================================================
-    // AJAX PROXY ENDPOINT  (server-side — API key NEVER leaves the server)
+    // AJAX PROXY ENDPOINT  (server-side â€” API key NEVER leaves the server)
     // =========================================================================
 
     /**
@@ -820,6 +834,24 @@ HTML;
 
         if ($function === 'testchat') {
             $this->handleTestChatRequest();
+            $event->set('success', true);
+            return;
+        }
+
+        if ($function === 'voiceTranscribe') {
+            $this->handleVoiceTranscribeRequest();
+            $event->set('success', true);
+            return;
+        }
+
+        if ($function === 'voiceTest') {
+            $this->handleVoiceTestPageRequest();
+            $event->set('success', true);
+            return;
+        }
+
+        if ($function === 'voiceTestStatus') {
+            $this->handleVoiceTestStatusRequest();
             $event->set('success', true);
             return;
         }
@@ -909,9 +941,9 @@ HTML;
     }
 
     /**
-     * Test endpoint — verifies the plugin endpoint is reachable and the API key is set.
+     * Test endpoint â€” verifies the plugin endpoint is reachable and the API key is set.
      * Accessible at: /index.php/plugins/direct?plugin=AIInterview&function=testchat
-     * Does NOT call OpenAI — just returns configuration status.
+     * Does NOT call OpenAI â€” just returns configuration status.
      */
     private function handleTestChatRequest(): void
     {
@@ -937,6 +969,192 @@ HTML;
         ]);
     }
 
+
+    /**
+     * Admin-only configuration check for Azure Speech.
+     * GET /index.php/plugins/direct?plugin=AIInterview&function=voiceTestStatus
+     */
+    private function handleVoiceTestStatusRequest(): void
+    {
+        if (!$this->isPluginAdmin()) {
+            $this->sendJsonResponse(['error' => 'Unauthorized'], 403);
+            return;
+        }
+
+        $speechKey    = trim((string) $this->get('azure_speech_key', null, null, ''));
+        $speechRegion = trim((string) $this->get('azure_speech_region', null, null, 'westeurope'));
+
+        $this->sendJsonResponse([
+            'status'              => 'ok',
+            'azure_speech_set'    => $speechKey !== '',
+            'azure_speech_region' => $speechRegion ?: 'westeurope',
+            'transcribe_url'      => Yii::app()->createUrl('plugins/direct', [
+                'plugin'   => 'AIInterview',
+                'function' => 'voiceTranscribe',
+            ]),
+        ]);
+    }
+
+    /**
+     * Admin-only HTML page to test microphone + Azure Speech transcription.
+     * GET /index.php/plugins/direct?plugin=AIInterview&function=voiceTest
+     */
+    private function handleVoiceTestPageRequest(): void
+    {
+        if (!$this->isPluginAdmin()) {
+            http_response_code(403);
+            echo 'Unauthorized';
+            Yii::app()->end();
+            return;
+        }
+
+        $transcribeUrl = Yii::app()->createUrl('plugins/direct', [
+            'plugin'   => 'AIInterview',
+            'function' => 'voiceTranscribe',
+        ]);
+        $statusUrl = Yii::app()->createUrl('plugins/direct', [
+            'plugin'   => 'AIInterview',
+            'function' => 'voiceTestStatus',
+        ]);
+
+        $assetPath = dirname(__FILE__) . '/assets';
+        $assetUrl  = Yii::app()->assetManager->publish($assetPath);
+        $eTranscribe = htmlspecialchars($transcribeUrl, ENT_QUOTES, 'UTF-8');
+        $eStatus     = htmlspecialchars($statusUrl, ENT_QUOTES, 'UTF-8');
+        $eAsset      = htmlspecialchars($assetUrl, ENT_QUOTES, 'UTF-8');
+
+        http_response_code(200);
+        header('Content-Type: text/html; charset=utf-8');
+        header('X-Content-Type-Options: nosniff');
+
+        echo <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Interview - Voice Test</title>
+    <link rel="stylesheet" href="{$eAsset}/voice-test.css">
+</head>
+<body>
+    <main class="voice-test">
+        <h1>AI Interview - Voice Test</h1>
+        <p class="voice-test-lead">Record a short clip to verify Azure Speech (EU) transcription. Admin only.</p>
+        <div id="voice-test-status" class="voice-test-banner" role="status"></div>
+        <label for="voice-test-language">Language</label>
+        <select id="voice-test-language">
+            <option value="en">English (en-GB)</option>
+            <option value="pl">Polish (pl-PL)</option>
+        </select>
+        <div class="voice-test-controls">
+            <button type="button" id="voice-test-record" class="voice-test-btn">Start recording</button>
+            <button type="button" id="voice-test-stop" class="voice-test-btn" disabled>Stop and transcribe</button>
+        </div>
+        <p class="voice-test-hint">Microphone level:</p>
+        <meter id="voice-test-meter" min="0" max="1" low="0.1" high="0.7" optimum="0.5" value="0"></meter>
+        <h2>Transcription</h2>
+        <pre id="voice-test-result" class="voice-test-result">(record something to see text here)</pre>
+    </main>
+    <script>
+        window.AIInterviewVoiceTest = {
+            transcribeUrl: "{$eTranscribe}",
+            statusUrl: "{$eStatus}"
+        };
+    </script>
+    <script src="{$eAsset}/voice-test.js"></script>
+</body>
+</html>
+HTML;
+        Yii::app()->end();
+    }
+
+    /**
+     * Transcribe uploaded audio via Azure Speech (EU).
+     */
+    private function handleVoiceTranscribeRequest(): void
+    {
+        $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+        if ($method !== 'POST') {
+            $this->sendJsonResponse(['error' => 'Method not allowed. Use POST.'], 405);
+            return;
+        }
+
+        $surveyId = isset($_POST['surveyId']) ? (int) $_POST['surveyId'] : 0;
+        $language = isset($_POST['language']) ? (string) $_POST['language'] : 'en';
+
+        if (!$this->canUseVoiceApi($surveyId)) {
+            $this->sendJsonResponse(['error' => 'Unauthorized'], 403);
+            return;
+        }
+
+        if (empty($_FILES['audio']) || !is_uploaded_file($_FILES['audio']['tmp_name'])) {
+            $this->sendJsonResponse(['error' => 'Missing audio upload'], 400);
+            return;
+        }
+
+        $file = $_FILES['audio'];
+        if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+            $this->sendJsonResponse(['error' => 'Audio upload failed'], 400);
+            return;
+        }
+
+        $maxBytes = 10 * 1024 * 1024;
+        if (($file['size'] ?? 0) > $maxBytes) {
+            $this->sendJsonResponse(['error' => 'Audio file too large (max 10 MB)'], 400);
+            return;
+        }
+
+        $speechKey    = trim((string) $this->get('azure_speech_key', null, null, ''));
+        $speechRegion = trim((string) $this->get('azure_speech_region', null, null, 'westeurope'));
+
+        if ($speechKey === '') {
+            $this->sendJsonResponse([
+                'error' => 'Azure Speech is not configured. Set the API key in Plugin Manager -> AIInterview.',
+            ], 503);
+            return;
+        }
+
+        $mimeType   = (string) ($file['type'] ?? 'application/octet-stream');
+        $audioBytes = (string) file_get_contents($file['tmp_name']);
+        @unlink($file['tmp_name']);
+
+        $locale = AzureSpeechClient::localeFromLanguage($language);
+        $client = new AzureSpeechClient($speechKey, $speechRegion);
+        $result = $client->recognizeOnce($audioBytes, $locale, $mimeType);
+
+        if (isset($result['error'])) {
+            $this->sendJsonResponse(['error' => $result['error']], 502);
+            return;
+        }
+
+        $this->sendJsonResponse([
+            'text'       => $result['text'],
+            'confidence' => $result['confidence'],
+            'durationMs' => $result['durationMs'],
+            'locale'     => $locale,
+        ]);
+    }
+
+    private function canUseVoiceApi(int $surveyId): bool
+    {
+        if ($this->isPluginAdmin()) {
+            return true;
+        }
+
+        return ($surveyId > 0 && isset($_SESSION['survey_' . $surveyId]));
+    }
+
+    private function isPluginAdmin(): bool
+    {
+        try {
+            if (Permission::model()->hasGlobalPermission('superadmin', 'read')) {
+                return true;
+            }
+            return Permission::model()->hasGlobalPermission('surveys', 'read');
+        } catch (Exception $e) {
+            return false;
+        }
+    }
     /**
      * Process an incoming chat message and proxy it to OpenAI.
      *
@@ -997,7 +1215,7 @@ HTML;
         try {
             $isAdmin = Permission::model()->hasGlobalPermission('surveys', 'read');
         } catch (Exception $e) {
-            // Permission check failed — treat as non-admin
+            // Permission check failed â€” treat as non-admin
         }
 
         $hasSession = ($surveyId > 0 && isset($_SESSION['survey_' . $surveyId]));
@@ -1007,7 +1225,7 @@ HTML;
             return;
         }
 
-        // Retrieve API credentials from plugin settings (server-side only — never in HTML/JS)
+        // Retrieve API credentials from plugin settings (server-side only â€” never in HTML/JS)
         $apiKey = trim((string) $this->get('openai_api_key', null, null, ''));
         $model  = trim((string) $this->get('openai_model',   null, null, 'gpt-4o'));
 
@@ -1045,7 +1263,7 @@ HTML;
     }
 
     /**
-     * Sanitize the messages array — only allow known roles and cap content length
+     * Sanitize the messages array â€” only allow known roles and cap content length
      */
     private function sanitizeMessages(array $messages): array
     {
@@ -1086,7 +1304,7 @@ HTML;
         }
         unset($msg);
 
-        // No system message found — prepend one
+        // No system message found â€” prepend one
         array_unshift($messages, ['role' => 'system', 'content' => $instruction]);
     }
 
@@ -1182,13 +1400,13 @@ HTML;
         return <<<'PROMPT'
 You are a professional interviewer conducting a structured interview on behalf of a researcher.
 
-Your goal is to explore the respondent's experiences and opinions on [TOPIC — replace this with your topic].
+Your goal is to explore the respondent's experiences and opinions on [TOPIC â€” replace this with your topic].
 
 Guidelines:
 - Begin by introducing yourself briefly and asking your first question.
-- Ask 5–7 open-ended questions, one at a time. Wait for the respondent's answer before asking the next question.
+- Ask 5â€“7 open-ended questions, one at a time. Wait for the respondent's answer before asking the next question.
 - Follow up on interesting, unclear, or incomplete answers with probing questions (e.g. "Can you tell me more about that?").
-- Be warm, professional, and neutral — do not express personal opinions or judgements.
+- Be warm, professional, and neutral â€” do not express personal opinions or judgements.
 - When you have gathered sufficient information on all your questions, thank the respondent warmly and explicitly instruct them: "Please press the Finish Interview button to save your responses."
 
 Start the interview now by introducing yourself and asking your first question.
