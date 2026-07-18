@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.12.0
+ * @version     1.12.1
  * @since       LimeSurvey 6.0
  */
 
@@ -91,6 +91,31 @@ class AIInterview extends PluginBase
 
         // Admin notification if theme is not properly registered
         $this->subscribe('newAdminMenu');
+
+        // Allow multipart voice uploads to reach the plugin handler (auth still enforced in handler)
+        $this->subscribe('beforeControllerAction');
+    }
+
+    /**
+     * Disable Yii CSRF validation for voiceTranscribe only.
+     * Multipart uploads from the admin voice-test page include a CSRF token when
+     * possible, but LimeSurvey may reject the request before the plugin runs.
+     * Access is still gated by isPluginAdmin() / survey session in the handler.
+     */
+    public function beforeControllerAction()
+    {
+        $event = $this->getEvent();
+        if (strtolower((string) $event->get('controller')) !== 'plugins') {
+            return;
+        }
+        if (strtolower((string) $event->get('action')) !== 'direct') {
+            return;
+        }
+
+        $function = (string) Yii::app()->request->getParam('function', '');
+        if ($function === 'voiceTranscribe') {
+            Yii::app()->request->enableCsrfValidation = false;
+        }
     }
 
     // =========================================================================
@@ -1022,6 +1047,8 @@ HTML;
         $eTranscribe = htmlspecialchars($transcribeUrl, ENT_QUOTES, 'UTF-8');
         $eStatus     = htmlspecialchars($statusUrl, ENT_QUOTES, 'UTF-8');
         $eAsset      = htmlspecialchars($assetUrl, ENT_QUOTES, 'UTF-8');
+        $csrfToken   = Yii::app()->request->getCsrfToken();
+        $eCsrf       = htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8');
 
         http_response_code(200);
         header('Content-Type: text/html; charset=utf-8');
@@ -1034,6 +1061,7 @@ HTML;
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AI Interview - Voice Test</title>
+    <meta name="csrf-token" content="{$eCsrf}">
     <link rel="stylesheet" href="{$eAsset}/voice-test.css">
 </head>
 <body>
@@ -1054,6 +1082,7 @@ HTML;
         <meter id="voice-test-meter" min="0" max="1" low="0.1" high="0.7" optimum="0.5" value="0"></meter>
         <h2>Transcription</h2>
         <pre id="voice-test-result" class="voice-test-result">(record something to see text here)</pre>
+        <input type="hidden" id="voice-test-csrf" name="YII_CSRF_TOKEN" value="{$eCsrf}">
     </main>
     <script>
         window.AIInterviewVoiceTest = {
@@ -1088,13 +1117,13 @@ HTML;
         }
 
         if (empty($_FILES['audio']) || !is_uploaded_file($_FILES['audio']['tmp_name'])) {
-            $this->sendJsonResponse(['error' => 'Missing audio upload'], 400);
+            $this->sendJsonResponse(['error' => $this->describeAudioUploadFailure()], 400);
             return;
         }
 
         $file = $_FILES['audio'];
         if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
-            $this->sendJsonResponse(['error' => 'Audio upload failed'], 400);
+            $this->sendJsonResponse(['error' => $this->describeAudioFileError((int) $file['error'])], 400);
             return;
         }
 
@@ -1155,6 +1184,61 @@ HTML;
             return false;
         }
     }
+
+    private function describeAudioUploadFailure(): string
+    {
+        $contentLength  = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+        $postMaxBytes   = $this->iniSizeToBytes(ini_get('post_max_size'));
+        $uploadMaxBytes = $this->iniSizeToBytes(ini_get('upload_max_filesize'));
+
+        if ($contentLength > 0 && $postMaxBytes > 0 && $contentLength > $postMaxBytes) {
+            return 'Audio upload exceeded PHP post_max_size (' . ini_get('post_max_size') . ').';
+        }
+
+        if ($contentLength > 0 && $uploadMaxBytes > 0 && $contentLength > $uploadMaxBytes) {
+            return 'Audio upload exceeded PHP upload_max_filesize (' . ini_get('upload_max_filesize') . ').';
+        }
+
+        return 'Missing audio upload. Ensure the recording finished and try again.';
+    }
+
+    private function describeAudioFileError(int $code): string
+    {
+        switch ($code) {
+            case UPLOAD_ERR_INI_SIZE:
+            case UPLOAD_ERR_FORM_SIZE:
+                return 'Audio upload too large for server limits.';
+            case UPLOAD_ERR_PARTIAL:
+                return 'Audio upload was interrupted. Please try again.';
+            case UPLOAD_ERR_NO_FILE:
+                return 'No audio file received.';
+            default:
+                return 'Audio upload failed (code ' . $code . ').';
+        }
+    }
+
+    private function iniSizeToBytes(string $value): int
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return 0;
+        }
+
+        $unit = strtolower(substr($value, -1));
+        $number = (float) $value;
+
+        switch ($unit) {
+            case 'g':
+                return (int) ($number * 1024 * 1024 * 1024);
+            case 'm':
+                return (int) ($number * 1024 * 1024);
+            case 'k':
+                return (int) ($number * 1024);
+            default:
+                return (int) $number;
+        }
+    }
+
     /**
      * Process an incoming chat message and proxy it to OpenAI.
      *
