@@ -102,8 +102,9 @@
             } catch (e) {
                 var snippet = text.replace(/\s+/g, ' ').trim().substring(0, 120);
                 throw new Error(
-                    'Server returned HTML instead of JSON (HTTP ' + response.status + '). '
-                    + 'This usually means CSRF validation failed or the plugin is not updated. '
+                    'Server returned HTML instead of JSON (HTTP ' + response.status + ') for '
+                    + (response.url || 'request') + '. '
+                    + 'Redeploy plugin v1.12.2+ if URLs point to /admin/. '
                     + 'Snippet: ' + snippet
                 );
             }

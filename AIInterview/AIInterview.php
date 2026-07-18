@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.12.1
+ * @version     1.12.2
  * @since       LimeSurvey 6.0
  */
 
@@ -97,10 +97,9 @@ class AIInterview extends PluginBase
     }
 
     /**
-     * Disable Yii CSRF validation for voiceTranscribe only.
-     * Multipart uploads from the admin voice-test page include a CSRF token when
-     * possible, but LimeSurvey may reject the request before the plugin runs.
-     * Access is still gated by isPluginAdmin() / survey session in the handler.
+     * Disable Yii CSRF validation for all AIInterview plugin direct requests.
+     * Multipart voice uploads cannot always include CSRF before Yii rejects them.
+     * Access is still gated by isPluginAdmin() / survey session in each handler.
      */
     public function beforeControllerAction()
     {
@@ -112,8 +111,8 @@ class AIInterview extends PluginBase
             return;
         }
 
-        $function = (string) Yii::app()->request->getParam('function', '');
-        if ($function === 'voiceTranscribe') {
+        $plugin = (string) Yii::app()->request->getParam('plugin', '');
+        if ($plugin === 'AIInterview') {
             Yii::app()->request->enableCsrfValidation = false;
         }
     }
@@ -838,6 +837,11 @@ HTML;
     {
         $event    = $this->getEvent();
         $function = $event->get('function');
+        $target   = (string) $event->get('target', '');
+
+        if ($target !== '' && $target !== 'AIInterview') {
+            return;
+        }
 
         if ($function === 'chat') {
             $this->handleChatRequest();
@@ -1013,10 +1017,7 @@ HTML;
             'status'              => 'ok',
             'azure_speech_set'    => $speechKey !== '',
             'azure_speech_region' => $speechRegion ?: 'westeurope',
-            'transcribe_url'      => Yii::app()->createUrl('plugins/direct', [
-                'plugin'   => 'AIInterview',
-                'function' => 'voiceTranscribe',
-            ]),
+            'transcribe_url'      => $this->getPluginDirectUrl('voiceTranscribe'),
         ]);
     }
 
@@ -1033,14 +1034,8 @@ HTML;
             return;
         }
 
-        $transcribeUrl = Yii::app()->createUrl('plugins/direct', [
-            'plugin'   => 'AIInterview',
-            'function' => 'voiceTranscribe',
-        ]);
-        $statusUrl = Yii::app()->createUrl('plugins/direct', [
-            'plugin'   => 'AIInterview',
-            'function' => 'voiceTestStatus',
-        ]);
+        $transcribeUrl = $this->getPluginDirectUrl('voiceTranscribe');
+        $statusUrl     = $this->getPluginDirectUrl('voiceTestStatus');
 
         $assetPath = dirname(__FILE__) . '/assets';
         $assetUrl  = Yii::app()->assetManager->publish($assetPath);
@@ -1515,12 +1510,43 @@ PROMPT;
      */
     private function sendJsonResponse(array $data, int $statusCode = 200): void
     {
+        $json = json_encode($data, JSON_UNESCAPED_UNICODE);
+        if ($json === false) {
+            $json       = '{"error":"Failed to encode JSON response"}';
+            $statusCode = 500;
+        }
+
+        try {
+            $event = $this->getEvent();
+            if ($event) {
+                $event->setContent($this, $json);
+                $event->stop();
+            }
+        } catch (Exception $e) {
+            // Ignore — fall back to direct output below.
+        }
+
         http_response_code($statusCode);
         header('Content-Type: application/json; charset=utf-8');
         header('X-Content-Type-Options: nosniff');
         header('Cache-Control: no-store, no-cache, must-revalidate');
         header('Pragma: no-cache');
-        echo json_encode($data, JSON_UNESCAPED_UNICODE);
+        echo $json;
         Yii::app()->end();
+    }
+
+    /**
+     * Always build a public (non-admin) plugins/direct URL.
+     * createUrl() may prefix /admin/ when an administrator is logged in,
+     * which causes fetch/XHR to receive HTML instead of JSON.
+     */
+    private function getPluginDirectUrl(string $function): string
+    {
+        $baseUrl = rtrim((string) Yii::app()->getBaseUrl(true), '/');
+
+        return $baseUrl . '/index.php/plugins/direct?' . http_build_query([
+            'plugin'   => 'AIInterview',
+            'function' => $function,
+        ], '', '&', PHP_QUERY_RFC3986);
     }
 }
