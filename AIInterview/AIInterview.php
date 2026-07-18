@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.12.2
+ * @version     1.12.3
  * @since       LimeSurvey 6.0
  */
 
@@ -1039,11 +1039,13 @@ HTML;
 
         $assetPath = dirname(__FILE__) . '/assets';
         $assetUrl  = Yii::app()->assetManager->publish($assetPath);
-        $eTranscribe = htmlspecialchars($transcribeUrl, ENT_QUOTES, 'UTF-8');
-        $eStatus     = htmlspecialchars($statusUrl, ENT_QUOTES, 'UTF-8');
-        $eAsset      = htmlspecialchars($assetUrl, ENT_QUOTES, 'UTF-8');
-        $csrfToken   = Yii::app()->request->getCsrfToken();
-        $eCsrf       = htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8');
+        $eAsset    = htmlspecialchars($assetUrl, ENT_QUOTES, 'UTF-8');
+        $csrfToken = Yii::app()->request->getCsrfToken();
+        $eCsrf     = htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8');
+        $jsConfig  = json_encode([
+            'transcribeUrl' => $transcribeUrl,
+            'statusUrl'     => $statusUrl,
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
         http_response_code(200);
         header('Content-Type: text/html; charset=utf-8');
@@ -1080,10 +1082,7 @@ HTML;
         <input type="hidden" id="voice-test-csrf" name="YII_CSRF_TOKEN" value="{$eCsrf}">
     </main>
     <script>
-        window.AIInterviewVoiceTest = {
-            transcribeUrl: "{$eTranscribe}",
-            statusUrl: "{$eStatus}"
-        };
+        window.AIInterviewVoiceTest = {$jsConfig};
     </script>
     <script src="{$eAsset}/voice-test.js"></script>
 </body>
