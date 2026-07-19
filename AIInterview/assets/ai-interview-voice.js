@@ -388,7 +388,12 @@
                         onError(t(language, 'errorGeneric'));
                     }
                 } else {
-                    onError(t(language, 'errorGeneric'));
+                    try {
+                        var errData = JSON.parse(xhr.responseText);
+                        onError(errData.error || t(language, 'errorGeneric'));
+                    } catch (e2) {
+                        onError(t(language, 'errorGeneric'));
+                    }
                 }
             };
             xhr.onerror = function () { onError(t(language, 'errorGeneric')); };

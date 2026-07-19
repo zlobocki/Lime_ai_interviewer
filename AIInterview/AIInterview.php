@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.13.0
+ * @version     1.13.1
  * @since       LimeSurvey 6.0
  */
 
@@ -1656,8 +1656,11 @@ HTML;
      */
     private function callOpenAI(string $apiKey, string $model, array $messages, int $maxTokens): array
     {
-        // Reserve roughly half the budget for the AI's reply
-        $maxCompletionTokens = max(256, (int) ($maxTokens / 2));
+        // Reserve roughly half the budget for the AI's reply, capped to model limits
+        $maxCompletionTokens = $this->getMaxCompletionTokensForModel(
+            $model,
+            max(256, (int) ($maxTokens / 2))
+        );
 
         $payload = json_encode([
             'model'      => $model,
@@ -1722,6 +1725,29 @@ HTML;
             'tokens_used'  => (int) ($data['usage']['total_tokens'] ?? 0),
             'finish_reason'=> (string) ($data['choices'][0]['finish_reason'] ?? 'stop'),
         ];
+    }
+
+    /**
+     * Cap completion tokens to what the selected OpenAI model supports.
+     */
+    private function getMaxCompletionTokensForModel(string $model, int $requested): int
+    {
+        $modelLower = strtolower($model);
+
+        // Conservative per-model output limits (OpenAI chat completions API)
+        if (strpos($modelLower, 'gpt-4o') !== false) {
+            $cap = 16384;
+        } elseif (strpos($modelLower, 'gpt-4-turbo') !== false) {
+            $cap = 4096;
+        } elseif (strpos($modelLower, 'gpt-3.5') !== false) {
+            $cap = 4096;
+        } elseif (preg_match('/\bo[134](-|$)/', $modelLower)) {
+            $cap = 16384;
+        } else {
+            $cap = 4096;
+        }
+
+        return min(max(256, $requested), $cap);
     }
 
     // =========================================================================
