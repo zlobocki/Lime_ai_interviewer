@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.12.3
+ * @version     1.12.4
  * @since       LimeSurvey 6.0
  */
 
@@ -1137,8 +1137,9 @@ HTML;
             return;
         }
 
-        $mimeType   = (string) ($file['type'] ?? 'application/octet-stream');
-        $audioBytes = (string) file_get_contents($file['tmp_name']);
+        $mimeType    = (string) ($file['type'] ?? 'application/octet-stream');
+        $audioBytes  = (string) file_get_contents($file['tmp_name']);
+        $audioSize   = strlen($audioBytes);
         @unlink($file['tmp_name']);
 
         $locale = AzureSpeechClient::localeFromLanguage($language);
@@ -1150,12 +1151,20 @@ HTML;
             return;
         }
 
-        $this->sendJsonResponse([
-            'text'       => $result['text'],
-            'confidence' => $result['confidence'],
-            'durationMs' => $result['durationMs'],
-            'locale'     => $locale,
-        ]);
+        $response = [
+            'text'           => $result['text'],
+            'confidence'     => $result['confidence'],
+            'durationMs'     => $result['durationMs'],
+            'locale'         => $locale,
+            'audioSizeBytes' => $audioSize,
+            'mimeType'       => $mimeType,
+        ];
+
+        if (!empty($result['warning'])) {
+            $response['warning'] = $result['warning'];
+        }
+
+        $this->sendJsonResponse($response);
     }
 
     private function canUseVoiceApi(int $surveyId): bool

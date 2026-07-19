@@ -95,6 +95,74 @@
         }
     }
 
+    /**
+     * Azure short-audio REST API reliably accepts 16 kHz mono PCM WAV.
+     * Browser MediaRecorder produces WebM/Opus, which often decodes to silence server-side.
+     */
+    function audioBufferToWav(audioBuffer) {
+        var channelData = audioBuffer.getChannelData(0);
+        var sampleRate = audioBuffer.sampleRate;
+        var numSamples = channelData.length;
+        var bytesPerSample = 2;
+        var blockAlign = bytesPerSample;
+        var byteRate = sampleRate * blockAlign;
+        var dataSize = numSamples * bytesPerSample;
+        var buffer = new ArrayBuffer(44 + dataSize);
+        var view = new DataView(buffer);
+
+        function writeString(offset, str) {
+            for (var i = 0; i < str.length; i++) {
+                view.setUint8(offset + i, str.charCodeAt(i));
+            }
+        }
+
+        writeString(0, 'RIFF');
+        view.setUint32(4, 36 + dataSize, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, byteRate, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, 16, true);
+        writeString(36, 'data');
+        view.setUint32(40, dataSize, true);
+
+        var offset = 44;
+        for (var j = 0; j < numSamples; j++) {
+            var sample = Math.max(-1, Math.min(1, channelData[j]));
+            view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+            offset += 2;
+        }
+
+        return buffer;
+    }
+
+    function convertBlobToWav16kMono(blob) {
+        return blob.arrayBuffer().then(function (arrayBuffer) {
+            var decodeContext = new (window.AudioContext || window.webkitAudioContext)();
+            return decodeContext.decodeAudioData(arrayBuffer.slice(0)).then(function (decoded) {
+                return decodeContext.close().then(function () {
+                    var targetSampleRate = 16000;
+                    var frameCount = Math.max(1, Math.ceil(decoded.duration * targetSampleRate));
+                    var offline = new OfflineAudioContext(1, frameCount, targetSampleRate);
+                    var source = offline.createBufferSource();
+                    source.buffer = decoded;
+                    source.connect(offline.destination);
+                    source.start(0);
+                    return offline.startRendering();
+                });
+            }).catch(function (err) {
+                try { decodeContext.close(); } catch (e) { /* ignore */ }
+                throw err;
+            });
+        }).then(function (rendered) {
+            return new Blob([audioBufferToWav(rendered)], { type: 'audio/wav' });
+        });
+    }
+
     function parseJsonResponse(response) {
         return response.text().then(function (text) {
             try {
@@ -103,9 +171,7 @@
                 var snippet = text.replace(/\s+/g, ' ').trim().substring(0, 120);
                 throw new Error(
                     'Server returned HTML instead of JSON (HTTP ' + response.status + ') for '
-                    + (response.url || 'request') + '. '
-                    + 'Redeploy plugin v1.12.2+ if URLs point to /admin/. '
-                    + 'Snippet: ' + snippet
+                    + (response.url || 'request') + '. Snippet: ' + snippet
                 );
             }
         });
@@ -160,7 +226,8 @@
                     stopMeter();
 
                     var blobType = mimeType || 'audio/webm';
-                    transcribe(new Blob(audioChunks, { type: blobType.split(';')[0] }));
+                    var recordedBlob = new Blob(audioChunks, { type: blobType.split(';')[0] });
+                    transcribe(recordedBlob);
                 };
 
                 mediaRecorder.start(250);
@@ -183,33 +250,36 @@
         }
         recordBtn.disabled = false;
         stopBtn.disabled = true;
-        setStatus('Transcribing...', false);
+        setStatus('Converting audio and transcribing...', false);
     });
 
-    function transcribe(blob) {
-        if (!blob || blob.size === 0) {
+    function transcribe(recordedBlob) {
+        if (!recordedBlob || recordedBlob.size === 0) {
             setStatus('No audio captured. Check microphone permissions and try again.', true);
             return;
         }
 
-        var form = new FormData();
-        form.append('audio', blob, 'utterance.webm');
-        form.append('language', langSelect ? langSelect.value : 'en');
-        form.append('surveyId', '0');
+        convertBlobToWav16kMono(recordedBlob)
+            .then(function (wavBlob) {
+                var form = new FormData();
+                form.append('audio', wavBlob, 'utterance.wav');
+                form.append('language', langSelect ? langSelect.value : 'en');
+                form.append('surveyId', '0');
 
-        var csrf = getCsrfToken();
-        if (csrf) {
-            form.append('YII_CSRF_TOKEN', csrf);
-        }
+                var csrf = getCsrfToken();
+                if (csrf) {
+                    form.append('YII_CSRF_TOKEN', csrf);
+                }
 
-        fetch(cfg.transcribeUrl, {
-            method: 'POST',
-            body: form,
-            credentials: 'same-origin',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        })
+                return fetch(cfg.transcribeUrl, {
+                    method: 'POST',
+                    body: form,
+                    credentials: 'same-origin',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+            })
             .then(parseJsonResponse)
             .then(function (result) {
                 var data = result.data;
@@ -217,12 +287,24 @@
                     setStatus(data.error || ('Server error (HTTP ' + result.ok + ')'), true);
                     return;
                 }
+
                 var line = data.text || '(empty transcription)';
+                if (data.warning) {
+                    line += '\n\n[warning: ' + data.warning + ']';
+                }
                 if (data.confidence != null) {
                     line += '\n\n[confidence: ' + Math.round(data.confidence * 100) + '%, locale: ' + (data.locale || '') + ']';
                 }
+                if (data.durationMs != null) {
+                    line += '\n[audio duration: ' + data.durationMs + ' ms, upload: ' + (data.audioSizeBytes || '?') + ' bytes]';
+                }
                 resultEl.textContent = line;
-                setStatus('Transcription complete.', false);
+
+                if (!data.text) {
+                    setStatus(data.warning || 'Transcription returned no text. Try speaking longer or louder.', true);
+                } else {
+                    setStatus('Transcription complete.', false);
+                }
             })
             .catch(function (err) {
                 setStatus('Transcription request failed: ' + err.message, true);

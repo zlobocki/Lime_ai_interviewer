@@ -100,6 +100,9 @@ class AzureSpeechClient
         if ($text === '' && isset($data['NBest'][0]['Display'])) {
             $text = trim((string) $data['NBest'][0]['Display']);
         }
+        if ($text === '' && isset($data['NBest'][0]['Lexical'])) {
+            $text = trim((string) $data['NBest'][0]['Lexical']);
+        }
 
         $confidence = null;
         if (isset($data['NBest'][0]['Confidence'])) {
@@ -112,11 +115,20 @@ class AzureSpeechClient
             $durationMs = (int) round(((int) $data['Duration']) / 10000);
         }
 
-        return [
+        $result = [
             'text'       => $text,
             'confidence' => $confidence,
             'durationMs' => $durationMs,
         ];
+
+        if ($text === '' && ($durationMs === null || $durationMs <= 0)) {
+            $result['warning'] = 'Azure accepted the request but detected no speech. '
+                . 'Use 16 kHz WAV (the voice test page converts automatically) and speak for at least 2–3 seconds.';
+        } elseif ($text === '') {
+            $result['warning'] = 'Azure heard audio but returned no words. Try speaking more clearly or closer to the microphone.';
+        }
+
+        return $result;
     }
 
     /**
