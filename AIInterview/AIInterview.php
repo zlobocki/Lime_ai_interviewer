@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.15.1
+ * @version     1.15.2
  * @since       LimeSurvey 6.0
  */
 
