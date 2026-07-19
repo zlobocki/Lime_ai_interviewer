@@ -1,17 +1,52 @@
 /* ==========================================================================
-   AI Interview Widget — LimeSurvey Plugin
+   AI Interview Widget — Glass Session
+   Scoped to .ai-interview-widget — no survey-wide theme overrides.
    ========================================================================== */
 
-/* Container */
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap");
+
 .ai-interview-widget {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --ai-font: "DM Sans", "Avenir Next", "Segoe UI", sans-serif;
+    --ai-bg-aurora:
+        radial-gradient(ellipse 120% 80% at 10% 0%, #d8f5ef 0%, transparent 55%),
+        radial-gradient(ellipse 100% 70% at 90% 10%, #e8f1ff 0%, transparent 50%),
+        linear-gradient(180deg, #f0f9f7 0%, #f7fafc 100%);
+    --ai-glass: rgba(255, 255, 255, 0.55);
+    --ai-glass-strong: rgba(255, 255, 255, 0.72);
+    --ai-ink: #0f172a;
+    --ai-ink-muted: #475569;
+    --ai-ink-faint: #64748b;
+    --ai-hairline: rgba(15, 23, 42, 0.1);
+    --ai-hairline-light: rgba(255, 255, 255, 0.6);
+    --ai-user-bubble: #0f172a;
+    --ai-assistant-bubble: rgba(255, 255, 255, 0.7);
+    --ai-accent: #0d9488;
+    --ai-accent-hover: #0f766e;
+    --ai-accent-soft: rgba(13, 148, 136, 0.16);
+    --ai-danger-bg: rgba(254, 242, 242, 0.78);
+    --ai-danger-border: rgba(248, 113, 113, 0.28);
+    --ai-danger-ink: #991b1b;
+    --ai-warn-bg: rgba(255, 251, 235, 0.82);
+    --ai-warn-border: rgba(251, 191, 36, 0.32);
+    --ai-warn-ink: #92400e;
+    --ai-ok-bg: rgba(236, 253, 245, 0.78);
+    --ai-ok-border: rgba(13, 148, 136, 0.22);
+    --ai-ok-ink: #0f766e;
+    --ai-radius-panel: 20px;
+    --ai-radius-bubble: 18px;
+    --ai-radius-sm: 12px;
+    --ai-shadow: 0 10px 40px rgba(15, 23, 42, 0.08);
+    --ai-blur: blur(16px) saturate(1.2);
+
+    font-family: var(--ai-font);
     max-width: 760px;
     margin: 16px 0;
-    border: 1px solid #d1d5db;
-    border-radius: 12px;
+    border: 1px solid var(--ai-hairline-light);
+    border-radius: var(--ai-radius-panel);
     overflow: hidden;
-    background: #ffffff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    background: var(--ai-bg-aurora);
+    box-shadow: var(--ai-shadow);
+    color: var(--ai-ink);
 }
 
 /* --------------------------------------------------------------------------
@@ -25,47 +60,47 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-    background: #f9fafb;
+    background: transparent;
     scroll-behavior: smooth;
 }
 
-/* Individual message bubble */
 .ai-message {
     display: flex;
     flex-direction: column;
     max-width: 80%;
-    animation: ai-fade-in 0.2s ease-out;
+    animation: ai-message-enter 0.22s ease-out;
 }
 
-@keyframes ai-fade-in {
-    from { opacity: 0; transform: translateY(6px); }
+@keyframes ai-message-enter {
+    from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Interviewer (AI) messages — left-aligned */
 .ai-message.ai-message-assistant {
     align-self: flex-start;
 }
 
 .ai-message.ai-message-assistant .ai-message-bubble {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 4px 16px 16px 16px;
-    color: #111827;
+    background: var(--ai-assistant-bubble);
+    backdrop-filter: var(--ai-blur);
+    -webkit-backdrop-filter: var(--ai-blur);
+    border: 1px solid var(--ai-hairline-light);
+    border-radius: 4px var(--ai-radius-bubble) var(--ai-radius-bubble) var(--ai-radius-bubble);
+    color: var(--ai-ink);
+    box-shadow: 0 2px 14px rgba(15, 23, 42, 0.04);
 }
 
-/* User messages — right-aligned */
 .ai-message.ai-message-user {
     align-self: flex-end;
 }
 
 .ai-message.ai-message-user .ai-message-bubble {
-    background: #2563eb;
-    border-radius: 16px 4px 16px 16px;
-    color: #ffffff;
+    background: var(--ai-user-bubble);
+    border: 1px solid rgba(15, 23, 42, 0.18);
+    border-radius: var(--ai-radius-bubble) 4px var(--ai-radius-bubble) var(--ai-radius-bubble);
+    color: #f8fafc;
 }
 
-/* Bubble content */
 .ai-message-bubble {
     padding: 10px 14px;
     font-size: 0.95rem;
@@ -74,19 +109,19 @@
     white-space: pre-wrap;
 }
 
-/* Sender label */
 .ai-message-label {
     font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: #6b7280;
+    color: var(--ai-ink-faint);
     margin-bottom: 3px;
     padding: 0 2px;
 }
 
 .ai-message.ai-message-user .ai-message-label {
     text-align: right;
+    color: var(--ai-ink-muted);
 }
 
 /* --------------------------------------------------------------------------
@@ -97,34 +132,34 @@
     align-items: center;
     gap: 4px;
     padding: 8px 16px;
-    background: #f9fafb;
+    background: transparent;
 }
 
 .ai-typing-dot {
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #9ca3af;
-    animation: ai-bounce 1.2s infinite ease-in-out;
+    background: var(--ai-accent);
+    animation: ai-typing-pulse 1.4s infinite ease-in-out;
 }
 
 .ai-typing-dot:nth-child(1) { animation-delay: 0s; }
-.ai-typing-dot:nth-child(2) { animation-delay: 0.2s; }
-.ai-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+.ai-typing-dot:nth-child(2) { animation-delay: 0.22s; }
+.ai-typing-dot:nth-child(3) { animation-delay: 0.44s; }
 
-@keyframes ai-bounce {
-    0%, 80%, 100% { transform: scale(0.7); opacity: 0.5; }
-    40%            { transform: scale(1.0); opacity: 1; }
+@keyframes ai-typing-pulse {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50%      { opacity: 0.95; transform: scale(1); }
 }
 
 .ai-typing-label {
     font-size: 0.8rem;
-    color: #9ca3af;
+    color: var(--ai-ink-faint);
     margin-left: 4px;
 }
 
 /* --------------------------------------------------------------------------
-   Error banner
+   Error / warnings / notices
    -------------------------------------------------------------------------- */
 .ai-interview-error {
     display: flex;
@@ -132,9 +167,11 @@
     gap: 12px;
     flex-wrap: wrap;
     padding: 12px 16px;
-    background: #fef2f2;
-    border-top: 1px solid #fecaca;
-    color: #b91c1c;
+    background: var(--ai-danger-bg);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid var(--ai-danger-border);
+    color: var(--ai-danger-ink);
     font-size: 0.9rem;
 }
 
@@ -142,26 +179,24 @@
     flex: 1;
 }
 
-/* --------------------------------------------------------------------------
-   Token warning
-   -------------------------------------------------------------------------- */
 .ai-interview-token-warning {
     padding: 10px 16px;
-    background: #fffbeb;
-    border-top: 1px solid #fde68a;
-    color: #92400e;
+    background: var(--ai-warn-bg);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid var(--ai-warn-border);
+    color: var(--ai-warn-ink);
     font-size: 0.88rem;
     text-align: center;
 }
 
-/* --------------------------------------------------------------------------
-   Mandatory notice
-   -------------------------------------------------------------------------- */
 .ai-interview-mandatory-notice {
     padding: 8px 16px;
-    background: #eff6ff;
-    border-bottom: 1px solid #bfdbfe;
-    color: #1d4ed8;
+    background: var(--ai-glass);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--ai-hairline);
+    color: var(--ai-ink-muted);
     font-size: 0.85rem;
     margin: 0;
 }
@@ -171,8 +206,10 @@
    -------------------------------------------------------------------------- */
 .ai-interview-input-area {
     padding: 12px 16px;
-    border-top: 1px solid #e5e7eb;
-    background: #ffffff;
+    border-top: 1px solid var(--ai-hairline);
+    background: var(--ai-glass);
+    backdrop-filter: var(--ai-blur);
+    -webkit-backdrop-filter: var(--ai-blur);
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -181,32 +218,38 @@
 .ai-interview-input {
     width: 100%;
     padding: 10px 12px;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
+    border: 1px solid var(--ai-hairline);
+    border-radius: var(--ai-radius-sm);
     font-size: 0.95rem;
     font-family: inherit;
     resize: vertical;
     min-height: 60px;
-    transition: border-color 0.15s;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
     box-sizing: border-box;
-    color: #111827;
-    background: #f9fafb;
+    color: var(--ai-ink);
+    background: rgba(255, 255, 255, 0.45);
 }
 
 .ai-interview-input:focus {
     outline: none;
-    border-color: #2563eb;
-    background: #ffffff;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    border-color: var(--ai-accent);
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 0 0 3px var(--ai-accent-soft);
+    animation: ai-focus-breathe 1.4s ease-out 1;
+}
+
+@keyframes ai-focus-breathe {
+    0%   { box-shadow: 0 0 0 2px var(--ai-accent-soft); }
+    40%  { box-shadow: 0 0 0 5px rgba(13, 148, 136, 0.2); }
+    100% { box-shadow: 0 0 0 3px var(--ai-accent-soft); }
 }
 
 .ai-interview-input:disabled {
-    background: #f3f4f6;
-    color: #9ca3af;
+    background: rgba(248, 250, 252, 0.55);
+    color: var(--ai-ink-faint);
     cursor: not-allowed;
 }
 
-/* Action buttons row */
 .ai-interview-actions {
     display: flex;
     gap: 8px;
@@ -220,16 +263,17 @@
 .ai-btn {
     padding: 8px 18px;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--ai-radius-sm);
     font-size: 0.9rem;
     font-weight: 600;
+    font-family: inherit;
     cursor: pointer;
-    transition: background 0.15s, opacity 0.15s, transform 0.1s;
+    transition: background 0.15s, border-color 0.15s, opacity 0.15s, transform 0.1s;
     white-space: nowrap;
 }
 
 .ai-btn:active {
-    transform: scale(0.97);
+    transform: scale(0.98);
 }
 
 .ai-btn:disabled {
@@ -238,56 +282,58 @@
     transform: none;
 }
 
-/* Primary — Send */
 .ai-btn-primary {
-    background: #2563eb;
+    background: var(--ai-accent);
     color: #ffffff;
 }
 
 .ai-btn-primary:hover:not(:disabled) {
-    background: #1d4ed8;
+    background: var(--ai-accent-hover);
 }
 
-/* Finish Interview */
 .ai-btn-finish {
-    background: #16a34a;
-    color: #ffffff;
+    background: var(--ai-ink);
+    color: #f8fafc;
 }
 
 .ai-btn-finish:hover:not(:disabled) {
-    background: #15803d;
+    background: #1e293b;
 }
 
-/* Secondary / Skip */
 .ai-btn-secondary {
-    background: #f3f4f6;
-    color: #374151;
-    border: 1px solid #d1d5db;
+    background: var(--ai-glass-strong);
+    color: var(--ai-ink-muted);
+    border: 1px solid var(--ai-hairline);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
 }
 
 .ai-btn-secondary:hover:not(:disabled) {
-    background: #e5e7eb;
+    background: rgba(255, 255, 255, 0.92);
+    border-color: rgba(15, 23, 42, 0.14);
 }
 
 /* --------------------------------------------------------------------------
-   Finished state — input area locked
+   Finished state
    -------------------------------------------------------------------------- */
 .ai-interview-widget.ai-interview-finished .ai-interview-input-area {
-    background: #f9fafb;
+    background: rgba(255, 255, 255, 0.42);
 }
 
 .ai-interview-finished-notice {
     padding: 10px 16px;
-    background: #f0fdf4;
-    border-top: 1px solid #bbf7d0;
-    color: #166534;
+    background: var(--ai-ok-bg);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid var(--ai-ok-border);
+    color: var(--ai-ok-ink);
     font-size: 0.88rem;
     text-align: center;
     font-weight: 500;
 }
 
 /* --------------------------------------------------------------------------
-   Responsive
+   Responsive & a11y
    -------------------------------------------------------------------------- */
 @media (max-width: 480px) {
     .ai-message {
@@ -301,5 +347,20 @@
     .ai-btn {
         width: 100%;
         text-align: center;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ai-message {
+        animation: none;
+    }
+
+    .ai-typing-dot {
+        animation: none;
+        opacity: 0.65;
+    }
+
+    .ai-interview-input:focus {
+        animation: none;
     }
 }
