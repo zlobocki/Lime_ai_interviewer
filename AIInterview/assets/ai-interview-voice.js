@@ -61,6 +61,7 @@
         var surveyId = widget.dataset.surveyId || getSurveyIdFromPage();
         var prompt = widget.dataset.prompt || '';
         var maxTokens = parseInt(widget.dataset.maxTokens, 10) || 6000;
+        var submitPromptEnabled = widget.dataset.submitPrompt === '1';
 
         var avatarEl = document.getElementById('ai-avatar-' + sgqa);
         var questionEl = document.getElementById('ai-question-' + sgqa);
@@ -74,6 +75,9 @@
         var finishBtn = document.getElementById('ai-finish-' + sgqa);
         var answerField = document.getElementById('answer' + sgqa);
         var tokensUsedEl = document.getElementById('ai-tokens-used-' + sgqa);
+        var submitModalEl = document.getElementById('ai-submit-modal-' + sgqa);
+        var submitSurveyBtn = document.getElementById('ai-submit-survey-' + sgqa);
+        var backSurveyBtn = document.getElementById('ai-back-survey-' + sgqa);
 
         var avatars = {
             idle: widget.dataset.avatarIdle || '',
@@ -139,6 +143,20 @@
             finishBtn.addEventListener('click', function () { finishInterview(false); });
         }
 
+        if (submitSurveyBtn) {
+            submitSurveyBtn.addEventListener('click', function () {
+                hideSubmitModal();
+                triggerSurveySubmit(widget);
+            });
+        }
+
+        if (backSurveyBtn) {
+            backSurveyBtn.addEventListener('click', function () {
+                hideSubmitModal();
+                focusSurveySubmitButton(widget);
+            });
+        }
+
         var retryBtn = document.getElementById('ai-retry-' + sgqa);
         if (retryBtn) {
             retryBtn.addEventListener('click', function () {
@@ -174,9 +192,11 @@
 
         function setAvatar(state) {
             if (!avatarEl) return;
-            var url = avatars[state] || avatars.idle || avatars.speaking;
+            // Use the idle pose while Allie is presenting questions (speaking.png looks odd)
+            var visualState = (state === 'speaking') ? 'idle' : state;
+            var url = avatars[visualState] || avatars.idle || avatars.thinking;
             if (url) avatarEl.src = url;
-            avatarEl.alt = 'Allie — ' + state;
+            avatarEl.alt = 'Allie — ' + visualState;
         }
 
         function setStatus(text) {
@@ -419,6 +439,47 @@
             transcriptLines.push('');
             transcriptLines.push('--- Interview concluded ---');
             updateAnswerField();
+
+            if (submitPromptEnabled) {
+                showSubmitModal();
+            }
+        }
+
+        function showSubmitModal() {
+            if (!submitModalEl) return;
+            submitModalEl.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+            if (submitSurveyBtn) submitSurveyBtn.focus();
+        }
+
+        function hideSubmitModal() {
+            if (!submitModalEl) return;
+            submitModalEl.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        function focusSurveySubmitButton() {
+            var btn = findSurveySubmitButton(widget);
+            if (btn) {
+                btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if (typeof btn.focus === 'function') btn.focus();
+            }
+        }
+
+        function triggerSurveySubmit() {
+            var btn = findSurveySubmitButton(widget);
+            if (btn) {
+                btn.click();
+                return;
+            }
+            var form = widget.closest('form');
+            if (form) {
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit();
+                } else {
+                    form.submit();
+                }
+            }
         }
 
         function skipInterview() {
@@ -482,6 +543,28 @@
         if (input) return input.value;
         if (window.LS && window.LS.csrfToken) return window.LS.csrfToken;
         return null;
+    }
+
+    function findSurveySubmitButton(widget) {
+        var form = widget ? widget.closest('form') : document.querySelector('form#limesurvey, form.limesurvey');
+        if (!form) {
+            form = document.querySelector('form[action*="survey"]');
+        }
+        if (!form) return null;
+
+        var byId = form.querySelector('#ls-button-submit');
+        if (byId) return byId;
+
+        var candidates = form.querySelectorAll('button, input[type="submit"]');
+        for (var i = 0; i < candidates.length; i++) {
+            var el = candidates[i];
+            var label = (el.textContent || el.value || '').trim().toLowerCase();
+            if (label === 'submit' || label.indexOf('submit') !== -1) {
+                return el;
+            }
+        }
+
+        return form.querySelector('button[type="submit"], input[type="submit"]');
     }
 
     function initAllVoiceWidgets() {

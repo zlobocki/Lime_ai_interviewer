@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.13.1
+ * @version     1.13.2
  * @since       LimeSurvey 6.0
  */
 
@@ -378,6 +378,22 @@ class AIInterview extends PluginBase
                 ),
                 'caption'  => gT('Interview Mode'),
             ],
+            'ai_interview_submit_prompt' => [
+                'types'    => 'T',
+                'category' => gT('AI Interview Settings'),
+                'sortorder'=> 5,
+                'inputtype'=> 'singleselect',
+                'options'  => [
+                    '0' => gT('No — respondent uses the normal survey Submit button'),
+                    '1' => gT('Yes — show submit prompt when the interview ends'),
+                ],
+                'default'  => '0',
+                'help'     => gT(
+                    'When enabled, finishing the interview opens a dialog offering to submit the survey '
+                    . 'or return to the page. Useful when this question is the last step in the survey.'
+                ),
+                'caption'  => gT('Prompt to Submit Survey'),
+            ],
         ];
 
         $event->append('questionAttributes', $questionAttributes);
@@ -439,9 +455,10 @@ class AIInterview extends PluginBase
         // Load question attributes
         $prompt    = $this->getQuestionAttribute($questionId, 'ai_interview_prompt',    $this->getDefaultPrompt());
         $maxTokens = (int) $this->getQuestionAttribute($questionId, 'ai_interview_max_tokens', 6000);
-        $mandatory = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mandatory', '0');
-        $mode      = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mode', 'chat');
-        $isVoice   = ($mode !== 'chat');
+        $mandatory    = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mandatory', '0');
+        $mode         = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mode', 'chat');
+        $submitPrompt = (string) $this->getQuestionAttribute($questionId, 'ai_interview_submit_prompt', '0');
+        $isVoice      = ($mode !== 'chat');
 
         // Public plugin URLs (never /admin/ prefixed)
         $ajaxUrl        = $this->getPluginDirectUrl('chat');
@@ -481,6 +498,7 @@ class AIInterview extends PluginBase
                 $maxTokens,
                 $language,
                 $mandatory,
+                $submitPrompt,
                 $dispVal
             );
         } else {
@@ -590,9 +608,10 @@ class AIInterview extends PluginBase
         // Load question attributes
         $prompt    = $this->getQuestionAttribute($questionId, 'ai_interview_prompt',    $this->getDefaultPrompt());
         $maxTokens = (int) $this->getQuestionAttribute($questionId, 'ai_interview_max_tokens', 6000);
-        $mandatory = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mandatory', '0');
-        $mode      = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mode', 'chat');
-        $isVoice   = ($mode !== 'chat');
+        $mandatory    = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mandatory', '0');
+        $mode         = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mode', 'chat');
+        $submitPrompt = (string) $this->getQuestionAttribute($questionId, 'ai_interview_submit_prompt', '0');
+        $isVoice      = ($mode !== 'chat');
 
         $ajaxUrl       = $this->getPluginDirectUrl('chat');
         $transcribeUrl = $isVoice ? $this->getPluginDirectUrl('voiceTranscribe') : '';
@@ -623,6 +642,7 @@ class AIInterview extends PluginBase
                 $maxTokens,
                 $language,
                 $mandatory,
+                $submitPrompt,
                 ''
             );
         } else {
@@ -874,6 +894,7 @@ HTML;
         int    $maxTokens,
         string $language,
         string $mandatory,
+        string $submitPrompt,
         string $dispVal
     ): string {
         $labels = $this->getVoiceStaticLabels($language);
@@ -884,6 +905,7 @@ HTML;
         $ePrompt        = htmlspecialchars($prompt, ENT_QUOTES, 'UTF-8');
         $eLanguage      = htmlspecialchars($language, ENT_QUOTES, 'UTF-8');
         $eMandatory     = htmlspecialchars($mandatory, ENT_QUOTES, 'UTF-8');
+        $eSubmitPrompt  = htmlspecialchars($submitPrompt, ENT_QUOTES, 'UTF-8');
         $eDispVal       = htmlspecialchars($dispVal, ENT_QUOTES, 'UTF-8');
 
         $avatarBase = rtrim($assetUrl, '/');
@@ -899,6 +921,10 @@ HTML;
         $eStartSpeak   = htmlspecialchars($labels['startSpeak'], ENT_QUOTES, 'UTF-8');
         $eDoneSpeak    = htmlspecialchars($labels['doneSpeak'], ENT_QUOTES, 'UTF-8');
         $eFinish       = htmlspecialchars($labels['finish'], ENT_QUOTES, 'UTF-8');
+        $eSubmitTitle  = htmlspecialchars($labels['submitModalTitle'], ENT_QUOTES, 'UTF-8');
+        $eSubmitBody   = htmlspecialchars($labels['submitModalBody'], ENT_QUOTES, 'UTF-8');
+        $eSubmitEnd    = htmlspecialchars($labels['submitModalEnd'], ENT_QUOTES, 'UTF-8');
+        $eSubmitBack   = htmlspecialchars($labels['submitModalBack'], ENT_QUOTES, 'UTF-8');
 
         return <<<HTML
 <div class="ai-interview-widget ai-interview-voice-widget"
@@ -912,35 +938,38 @@ HTML;
      data-max-tokens="{$maxTokens}"
      data-language="{$eLanguage}"
      data-mandatory="{$eMandatory}"
+     data-submit-prompt="{$eSubmitPrompt}"
      data-avatar-idle="{$eAvatarIdle}"
      data-avatar-listening="{$eAvatarListening}"
      data-avatar-speaking="{$eAvatarSpeaking}"
      data-avatar-thinking="{$eAvatarThinking}">
 
     <div class="ai-voice-stage">
+        <div class="ai-voice-stage-content">
+            <p class="ai-voice-question"
+               id="ai-question-{$eSgqa}"
+               aria-live="polite"></p>
+            <p class="ai-voice-status"
+               id="ai-voice-status-{$eSgqa}"
+               aria-live="polite"></p>
+            <meter class="ai-voice-meter"
+                   id="ai-voice-meter-{$eSgqa}"
+                   min="0"
+                   max="1"
+                   low="0.25"
+                   high="0.75"
+                   optimum="0.5"
+                   value="0"
+                   aria-label="Microphone level"></meter>
+        </div>
         <div class="ai-voice-avatar-wrap">
             <img class="ai-voice-avatar"
                  id="ai-avatar-{$eSgqa}"
                  src="{$eAvatarThinking}"
                  alt="Allie"
-                 width="240"
-                 height="240" />
+                 width="48"
+                 height="48" />
         </div>
-        <p class="ai-voice-question"
-           id="ai-question-{$eSgqa}"
-           aria-live="polite"></p>
-        <p class="ai-voice-status"
-           id="ai-voice-status-{$eSgqa}"
-           aria-live="polite"></p>
-        <meter class="ai-voice-meter"
-               id="ai-voice-meter-{$eSgqa}"
-               min="0"
-               max="1"
-               low="0.25"
-               high="0.75"
-               optimum="0.5"
-               value="0"
-               aria-label="Microphone level"></meter>
     </div>
 
     <div class="ai-voice-transcript"
@@ -1009,6 +1038,32 @@ HTML;
 
     <input type="hidden" id="ai-tokens-used-{$eSgqa}" value="0" />
 
+    <div class="ai-voice-submit-modal"
+         id="ai-submit-modal-{$eSgqa}"
+         style="display:none;"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="ai-submit-modal-title-{$eSgqa}">
+        <div class="ai-voice-submit-modal-backdrop"></div>
+        <div class="ai-voice-submit-modal-panel">
+            <h3 class="ai-voice-submit-modal-title"
+                id="ai-submit-modal-title-{$eSgqa}">{$eSubmitTitle}</h3>
+            <p class="ai-voice-submit-modal-body">{$eSubmitBody}</p>
+            <div class="ai-voice-submit-modal-actions">
+                <button type="button"
+                        class="ai-btn ai-btn-primary ai-btn-submit-survey"
+                        id="ai-submit-survey-{$eSgqa}">
+                    {$eSubmitEnd}
+                </button>
+                <button type="button"
+                        class="ai-btn ai-btn-secondary ai-btn-back-survey"
+                        id="ai-back-survey-{$eSgqa}">
+                    {$eSubmitBack}
+                </button>
+            </div>
+        </div>
+    </div>
+
 </div>
 HTML;
     }
@@ -1060,6 +1115,10 @@ HTML;
                 'startSpeak'   => 'Zacznij mówić',
                 'doneSpeak'    => 'Gotowe',
                 'finish'       => 'Zakończ wywiad',
+                'submitModalTitle' => 'Wywiad zakończony',
+                'submitModalBody'  => 'Twoje odpowiedzi zostały zapisane. Czy chcesz teraz wysłać ankietę?',
+                'submitModalEnd'   => 'Zakończ i wyślij ankietę',
+                'submitModalBack'  => 'Wróć do ankiety',
             ];
         }
 
@@ -1071,6 +1130,10 @@ HTML;
             'startSpeak'   => 'Start speaking',
             'doneSpeak'    => 'Done speaking',
             'finish'       => 'Finish interview',
+            'submitModalTitle' => 'Interview complete',
+            'submitModalBody'  => 'Your responses have been saved. Would you like to submit the survey now?',
+            'submitModalEnd'   => 'End and submit survey',
+            'submitModalBack'  => 'Go back to survey',
         ];
     }
 
