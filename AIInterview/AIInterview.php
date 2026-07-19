@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.13.3
+ * @version     1.14.0
  * @since       LimeSurvey 6.0
  */
 
@@ -925,6 +925,12 @@ HTML;
         $eSubmitBody   = htmlspecialchars($labels['submitModalBody'], ENT_QUOTES, 'UTF-8');
         $eSubmitEnd    = htmlspecialchars($labels['submitModalEnd'], ENT_QUOTES, 'UTF-8');
         $eSubmitBack   = htmlspecialchars($labels['submitModalBack'], ENT_QUOTES, 'UTF-8');
+        $eWelcomeTitle = htmlspecialchars($labels['welcomeTitle'], ENT_QUOTES, 'UTF-8');
+        $eWelcomeIntro = htmlspecialchars($labels['welcomeIntro'], ENT_QUOTES, 'UTF-8');
+        $eWelcomePrivacy = htmlspecialchars($labels['welcomePrivacy'], ENT_QUOTES, 'UTF-8');
+        $eWelcomeMicHint = htmlspecialchars($labels['welcomeMicHint'], ENT_QUOTES, 'UTF-8');
+        $eWelcomeContinue = htmlspecialchars($labels['welcomeContinue'], ENT_QUOTES, 'UTF-8');
+        $eTranscriptShow = htmlspecialchars($labels['transcriptShow'], ENT_QUOTES, 'UTF-8');
 
         return <<<HTML
 <div class="ai-interview-widget ai-interview-voice-widget"
@@ -944,14 +950,50 @@ HTML;
      data-avatar-speaking="{$eAvatarSpeaking}"
      data-avatar-thinking="{$eAvatarThinking}">
 
+    <div class="ai-voice-welcome" id="ai-welcome-{$eSgqa}">
+        <div class="ai-voice-welcome-inner">
+            <img class="ai-voice-welcome-avatar"
+                 src="{$eAvatarIdle}"
+                 alt="Allie"
+                 width="125"
+                 height="125" />
+            <h3 class="ai-voice-welcome-title">{$eWelcomeTitle}</h3>
+            <p class="ai-voice-welcome-intro">{$eWelcomeIntro}</p>
+            <p class="ai-voice-welcome-privacy">{$eWelcomePrivacy}</p>
+            <p class="ai-voice-welcome-mic-hint">{$eWelcomeMicHint}</p>
+            <meter class="ai-voice-welcome-meter"
+                   id="ai-welcome-meter-{$eSgqa}"
+                   min="0"
+                   max="1"
+                   low="0.25"
+                   high="0.75"
+                   optimum="0.5"
+                   value="0"
+                   aria-label="Microphone test level"></meter>
+            <p class="ai-voice-welcome-status"
+               id="ai-welcome-status-{$eSgqa}"
+               aria-live="polite"></p>
+            <button type="button"
+                    class="ai-btn ai-btn-primary ai-btn-welcome-continue"
+                    id="ai-welcome-continue-{$eSgqa}"
+                    disabled>
+                {$eWelcomeContinue}
+            </button>
+        </div>
+    </div>
+
+    <div class="ai-voice-interview-panel"
+         id="ai-interview-panel-{$eSgqa}"
+         style="display:none;">
+
     <div class="ai-voice-stage">
         <div class="ai-voice-avatar-wrap">
             <img class="ai-voice-avatar"
                  id="ai-avatar-{$eSgqa}"
                  src="{$eAvatarThinking}"
                  alt="Allie"
-                 width="96"
-                 height="96" />
+                 width="125"
+                 height="125" />
         </div>
         <div class="ai-voice-stage-content">
             <p class="ai-voice-question"
@@ -972,7 +1014,15 @@ HTML;
         </div>
     </div>
 
-    <div class="ai-voice-transcript"
+    <button type="button"
+            class="ai-voice-transcript-toggle"
+            id="ai-transcript-toggle-{$eSgqa}"
+            aria-expanded="false"
+            aria-controls="ai-voice-transcript-{$eSgqa}">
+        {$eTranscriptShow}
+    </button>
+
+    <div class="ai-voice-transcript is-collapsed"
          id="ai-voice-transcript-{$eSgqa}"
          role="log"
          aria-live="polite"
@@ -1026,6 +1076,8 @@ HTML;
             {$eFinish}
         </button>
     </div>
+
+    </div><!-- /.ai-voice-interview-panel -->
 
     <textarea
         name="{$eSgqa}"
@@ -1119,6 +1171,13 @@ HTML;
                 'submitModalBody'  => 'Twoje odpowiedzi zostały zapisane. Czy chcesz teraz wysłać ankietę?',
                 'submitModalEnd'   => 'Zakończ i wyślij ankietę',
                 'submitModalBack'  => 'Wróć do ankiety',
+                'welcomeTitle'     => 'Witaj — to wywiad głosowy z Allie',
+                'welcomeIntro'     => 'Allie zada kilka pytań. Odpowiadaj na głos — pytania zobaczysz na ekranie.',
+                'welcomePrivacy'   => 'Twoje odpowiedzi są zapisywane w tej ankiecie. Mów wyraźnie w cichym miejscu.',
+                'welcomeMicHint'   => 'Zezwól na dostęp do mikrofonu i powiedz coś, aby sprawdzić poziom.',
+                'welcomeContinue'  => 'Rozpocznij wywiad',
+                'transcriptShow'   => 'Pokaż transkrypcję',
+                'transcriptHide'   => 'Ukryj transkrypcję',
             ];
         }
 
@@ -1134,6 +1193,13 @@ HTML;
             'submitModalBody'  => 'Your responses have been saved. Would you like to submit the survey now?',
             'submitModalEnd'   => 'End and submit survey',
             'submitModalBack'  => 'Go back to survey',
+            'welcomeTitle'     => 'Welcome — voice interview with Allie',
+            'welcomeIntro'     => 'Allie will ask you a few questions. Speak your answers — questions appear on screen.',
+            'welcomePrivacy'   => 'Your responses are saved in this survey. Please use a quiet space and speak clearly.',
+            'welcomeMicHint'   => 'Allow microphone access, then say something to test the level meter.',
+            'welcomeContinue'  => 'Continue to interview',
+            'transcriptShow'   => 'Show transcript',
+            'transcriptHide'   => 'Hide transcript',
         ];
     }
 

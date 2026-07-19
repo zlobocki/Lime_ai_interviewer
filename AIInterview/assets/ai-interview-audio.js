@@ -83,7 +83,12 @@
         });
     }
 
-    function startLevelMeter(stream, meterEl, onContext) {
+    function startLevelMeter(stream, meterEl, options) {
+        var onLevel = null;
+        if (options && typeof options.onLevel === 'function') {
+            onLevel = options.onLevel;
+        }
+
         var audioContext = new (global.AudioContext || global.webkitAudioContext)();
         var analyser = audioContext.createAnalyser();
         analyser.fftSize = 2048;
@@ -103,6 +108,9 @@
             if (meterEl) {
                 meterEl.value = Math.min(1, rms * 4);
             }
+            if (onLevel) {
+                onLevel(rms);
+            }
             frameId = global.requestAnimationFrame(tick);
         }
 
@@ -114,20 +122,6 @@
             audioContext.resume().then(begin).catch(begin);
         } else {
             begin();
-        }
-
-        if (typeof onContext === 'function') {
-            onContext({
-                stop: function () {
-                    if (frameId) {
-                        global.cancelAnimationFrame(frameId);
-                    }
-                    if (meterEl) {
-                        meterEl.value = 0;
-                    }
-                    audioContext.close();
-                }
-            });
         }
 
         return {
