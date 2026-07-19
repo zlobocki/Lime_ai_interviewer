@@ -16,7 +16,9 @@
     // =========================================================================
 
     function initAllWidgets() {
-        var widgets = document.querySelectorAll('.ai-interview-widget:not([data-ai-initialized])');
+        var widgets = document.querySelectorAll(
+            '.ai-interview-widget:not([data-ai-initialized]):not(.ai-interview-voice-widget)'
+        );
         if (widgets.length === 0) {
             console.log('AIInterview: No uninitialised widgets found on page.');
         }
@@ -513,10 +515,17 @@
     // dynamically inserting the widget HTML into the DOM.
     window.AIInterviewInitAll = initAllWidgets;
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initAllWidgets);
-    } else {
+    function bootstrapInterviewWidgets() {
+        if (typeof window.AIInterviewVoiceInitAll === 'function') {
+            window.AIInterviewVoiceInitAll();
+        }
         initAllWidgets();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootstrapInterviewWidgets);
+    } else {
+        bootstrapInterviewWidgets();
     }
 
 }());

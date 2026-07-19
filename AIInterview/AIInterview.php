@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.12.4
+ * @version     1.13.0
  * @since       LimeSurvey 6.0
  */
 
@@ -362,6 +362,22 @@ class AIInterview extends PluginBase
                 'help'     => gT('Whether the respondent must interact with the AI before they can proceed to the next page.'),
                 'caption'  => gT('Mandatory Interaction'),
             ],
+            'ai_interview_mode' => [
+                'types'    => 'T',
+                'category' => gT('AI Interview Settings'),
+                'sortorder'=> 4,
+                'inputtype'=> 'singleselect',
+                'options'  => [
+                    'voice' => gT('Voice — speak answers (Allie avatar)'),
+                    'chat'  => gT('Chat — type answers in a text box'),
+                ],
+                'default'  => 'voice',
+                'help'     => gT(
+                    'Voice mode uses the microphone and Azure Speech for transcription. '
+                    . 'Chat mode uses the classic text-based interview widget.'
+                ),
+                'caption'  => gT('Interview Mode'),
+            ],
         ];
 
         $event->append('questionAttributes', $questionAttributes);
@@ -424,12 +440,12 @@ class AIInterview extends PluginBase
         $prompt    = $this->getQuestionAttribute($questionId, 'ai_interview_prompt',    $this->getDefaultPrompt());
         $maxTokens = (int) $this->getQuestionAttribute($questionId, 'ai_interview_max_tokens', 6000);
         $mandatory = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mandatory', '0');
+        $mode      = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mode', 'chat');
+        $isVoice   = ($mode !== 'chat');
 
-        // Build the AJAX URL for the server-side proxy
-        $ajaxUrl = Yii::app()->createUrl('plugins/direct', [
-            'plugin'   => 'AIInterview',
-            'function' => 'chat',
-        ]);
+        // Public plugin URLs (never /admin/ prefixed)
+        $ajaxUrl        = $this->getPluginDirectUrl('chat');
+        $transcribeUrl  = $isVoice ? $this->getPluginDirectUrl('voiceTranscribe') : '';
 
         // Get the survey ID and language
         $surveyId = (int) $oQuestion->sid;
@@ -451,27 +467,34 @@ class AIInterview extends PluginBase
         // Register CSS and JS assets
         $assetPath = dirname(__FILE__) . '/assets';
         $assetUrl  = Yii::app()->assetManager->publish($assetPath);
-
-        Yii::app()->clientScript->registerCssFile(
-            $assetUrl . '/ai-interview.css',
-            'screen'
-        );
-        Yii::app()->clientScript->registerScriptFile(
-            $assetUrl . '/ai-interview.js',
-            CClientScript::POS_END
-        );
+        $this->registerInterviewAssets($isVoice ? 'voice' : 'chat', $assetUrl);
 
         // Build the widget HTML
-        $widgetHtml = $this->buildWidgetHtml(
-            $sgqa,
-            $surveyId,
-            $ajaxUrl,
-            $prompt,
-            $maxTokens,
-            $language,
-            $mandatory,
-            $dispVal
-        );
+        if ($isVoice) {
+            $widgetHtml = $this->buildVoiceWidgetHtml(
+                $sgqa,
+                $surveyId,
+                $ajaxUrl,
+                $transcribeUrl,
+                $assetUrl,
+                $prompt,
+                $maxTokens,
+                $language,
+                $mandatory,
+                $dispVal
+            );
+        } else {
+            $widgetHtml = $this->buildWidgetHtml(
+                $sgqa,
+                $surveyId,
+                $ajaxUrl,
+                $prompt,
+                $maxTokens,
+                $language,
+                $mandatory,
+                $dispVal
+            );
+        }
 
         // Get the current rendered HTML
         $html = $event->get('html');
@@ -568,11 +591,11 @@ class AIInterview extends PluginBase
         $prompt    = $this->getQuestionAttribute($questionId, 'ai_interview_prompt',    $this->getDefaultPrompt());
         $maxTokens = (int) $this->getQuestionAttribute($questionId, 'ai_interview_max_tokens', 6000);
         $mandatory = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mandatory', '0');
+        $mode      = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mode', 'chat');
+        $isVoice   = ($mode !== 'chat');
 
-        $ajaxUrl  = Yii::app()->createUrl('plugins/direct', [
-            'plugin'   => 'AIInterview',
-            'function' => 'chat',
-        ]);
+        $ajaxUrl       = $this->getPluginDirectUrl('chat');
+        $transcribeUrl = $isVoice ? $this->getPluginDirectUrl('voiceTranscribe') : '';
 
         $surveyId = (int) $oQuestion->sid;
         $language = $this->getSessionLanguage($surveyId);
@@ -586,27 +609,34 @@ class AIInterview extends PluginBase
         // Register CSS and JS assets
         $assetPath = dirname(__FILE__) . '/assets';
         $assetUrl  = Yii::app()->assetManager->publish($assetPath);
-
-        Yii::app()->clientScript->registerCssFile(
-            $assetUrl . '/ai-interview.css',
-            'screen'
-        );
-        Yii::app()->clientScript->registerScriptFile(
-            $assetUrl . '/ai-interview.js',
-            CClientScript::POS_END
-        );
+        $this->registerInterviewAssets($isVoice ? 'voice' : 'chat', $assetUrl);
 
         // Build the widget HTML for injection via JS
-        $widgetHtml = $this->buildWidgetHtml(
-            $sgqa,
-            $surveyId,
-            $ajaxUrl,
-            $prompt,
-            $maxTokens,
-            $language,
-            $mandatory,
-            ''
-        );
+        if ($isVoice) {
+            $widgetHtml = $this->buildVoiceWidgetHtml(
+                $sgqa,
+                $surveyId,
+                $ajaxUrl,
+                $transcribeUrl,
+                $assetUrl,
+                $prompt,
+                $maxTokens,
+                $language,
+                $mandatory,
+                ''
+            );
+        } else {
+            $widgetHtml = $this->buildWidgetHtml(
+                $sgqa,
+                $surveyId,
+                $ajaxUrl,
+                $prompt,
+                $maxTokens,
+                $language,
+                $mandatory,
+                ''
+            );
+        }
 
         // Escape the widget HTML for embedding in a JS string
         $widgetHtmlJs = json_encode($widgetHtml);
@@ -622,7 +652,10 @@ class AIInterview extends PluginBase
         var sgqa = {$eSgqa};
         // Skip if widget already injected by afterRenderQuestion
         if (document.getElementById('ai-interview-widget-' + sgqa)) {
-            // Widget already in DOM â€” make sure it is initialised
+            // Widget already in DOM — make sure it is initialised
+            if (typeof window.AIInterviewVoiceInitAll === 'function') {
+                window.AIInterviewVoiceInitAll();
+            }
             if (typeof window.AIInterviewInitAll === 'function') {
                 window.AIInterviewInitAll();
             }
@@ -645,6 +678,9 @@ class AIInterview extends PluginBase
             }
             textarea.parentNode.replaceChild(widget, textarea);
             // Now initialise the newly injected widget
+            if (typeof window.AIInterviewVoiceInitAll === 'function') {
+                window.AIInterviewVoiceInitAll();
+            }
             if (typeof window.AIInterviewInitAll === 'function') {
                 window.AIInterviewInitAll();
             }
@@ -823,6 +859,219 @@ JS;
 
 </div>
 HTML;
+    }
+
+    /**
+     * Build HTML for the voice interview widget (Allie avatar + speak controls).
+     */
+    private function buildVoiceWidgetHtml(
+        string $sgqa,
+        int    $surveyId,
+        string $ajaxUrl,
+        string $transcribeUrl,
+        string $assetUrl,
+        string $prompt,
+        int    $maxTokens,
+        string $language,
+        string $mandatory,
+        string $dispVal
+    ): string {
+        $labels = $this->getVoiceStaticLabels($language);
+
+        $eSgqa          = htmlspecialchars($sgqa, ENT_QUOTES, 'UTF-8');
+        $eAjaxUrl       = htmlspecialchars($ajaxUrl, ENT_QUOTES, 'UTF-8');
+        $eTranscribeUrl = htmlspecialchars($transcribeUrl, ENT_QUOTES, 'UTF-8');
+        $ePrompt        = htmlspecialchars($prompt, ENT_QUOTES, 'UTF-8');
+        $eLanguage      = htmlspecialchars($language, ENT_QUOTES, 'UTF-8');
+        $eMandatory     = htmlspecialchars($mandatory, ENT_QUOTES, 'UTF-8');
+        $eDispVal       = htmlspecialchars($dispVal, ENT_QUOTES, 'UTF-8');
+
+        $avatarBase = rtrim($assetUrl, '/');
+        $eAvatarIdle      = htmlspecialchars($avatarBase . '/avatar/idle.png', ENT_QUOTES, 'UTF-8');
+        $eAvatarListening = htmlspecialchars($avatarBase . '/avatar/listening.png', ENT_QUOTES, 'UTF-8');
+        $eAvatarSpeaking  = htmlspecialchars($avatarBase . '/avatar/speaking.png', ENT_QUOTES, 'UTF-8');
+        $eAvatarThinking  = htmlspecialchars($avatarBase . '/avatar/thinking.png', ENT_QUOTES, 'UTF-8');
+
+        $eErrorDefault = htmlspecialchars($labels['errorDefault'], ENT_QUOTES, 'UTF-8');
+        $eRetry        = htmlspecialchars($labels['retry'], ENT_QUOTES, 'UTF-8');
+        $eSkip         = htmlspecialchars($labels['skip'], ENT_QUOTES, 'UTF-8');
+        $eTokenWarning = htmlspecialchars($labels['tokenWarning'], ENT_QUOTES, 'UTF-8');
+        $eStartSpeak   = htmlspecialchars($labels['startSpeak'], ENT_QUOTES, 'UTF-8');
+        $eDoneSpeak    = htmlspecialchars($labels['doneSpeak'], ENT_QUOTES, 'UTF-8');
+        $eFinish       = htmlspecialchars($labels['finish'], ENT_QUOTES, 'UTF-8');
+
+        return <<<HTML
+<div class="ai-interview-widget ai-interview-voice-widget"
+     id="ai-interview-widget-{$eSgqa}"
+     data-interview-mode="voice"
+     data-sgqa="{$eSgqa}"
+     data-survey-id="{$surveyId}"
+     data-ajax-url="{$eAjaxUrl}"
+     data-transcribe-url="{$eTranscribeUrl}"
+     data-prompt="{$ePrompt}"
+     data-max-tokens="{$maxTokens}"
+     data-language="{$eLanguage}"
+     data-mandatory="{$eMandatory}"
+     data-avatar-idle="{$eAvatarIdle}"
+     data-avatar-listening="{$eAvatarListening}"
+     data-avatar-speaking="{$eAvatarSpeaking}"
+     data-avatar-thinking="{$eAvatarThinking}">
+
+    <div class="ai-voice-stage">
+        <div class="ai-voice-avatar-wrap">
+            <img class="ai-voice-avatar"
+                 id="ai-avatar-{$eSgqa}"
+                 src="{$eAvatarThinking}"
+                 alt="Allie"
+                 width="240"
+                 height="240" />
+        </div>
+        <p class="ai-voice-question"
+           id="ai-question-{$eSgqa}"
+           aria-live="polite"></p>
+        <p class="ai-voice-status"
+           id="ai-voice-status-{$eSgqa}"
+           aria-live="polite"></p>
+        <meter class="ai-voice-meter"
+               id="ai-voice-meter-{$eSgqa}"
+               min="0"
+               max="1"
+               low="0.25"
+               high="0.75"
+               optimum="0.5"
+               value="0"
+               aria-label="Microphone level"></meter>
+    </div>
+
+    <div class="ai-voice-transcript"
+         id="ai-voice-transcript-{$eSgqa}"
+         role="log"
+         aria-live="polite"
+         aria-label="Interview transcript"></div>
+
+    <div class="ai-interview-error"
+         id="ai-error-{$eSgqa}"
+         style="display:none;"
+         role="alert">
+        <span class="ai-error-text">{$eErrorDefault}</span>
+        <button type="button"
+                class="ai-btn ai-btn-primary ai-btn-retry"
+                id="ai-retry-{$eSgqa}"
+                data-sgqa="{$eSgqa}">
+            {$eRetry}
+        </button>
+        <button type="button"
+                class="ai-btn ai-btn-secondary ai-btn-skip"
+                data-sgqa="{$eSgqa}">
+            {$eSkip}
+        </button>
+    </div>
+
+    <div class="ai-interview-token-warning"
+         id="ai-token-warning-{$eSgqa}"
+         style="display:none;"
+         role="status">
+        {$eTokenWarning}
+    </div>
+
+    <div class="ai-voice-controls">
+        <button type="button"
+                class="ai-btn ai-btn-primary ai-btn-speak"
+                id="ai-speak-{$eSgqa}"
+                data-sgqa="{$eSgqa}"
+                disabled>
+            {$eStartSpeak}
+        </button>
+        <button type="button"
+                class="ai-btn ai-btn-secondary ai-btn-stop-speak"
+                id="ai-stop-speak-{$eSgqa}"
+                data-sgqa="{$eSgqa}"
+                disabled>
+            {$eDoneSpeak}
+        </button>
+        <button type="button"
+                class="ai-btn ai-btn-finish ai-btn-finish-interview"
+                id="ai-finish-{$eSgqa}"
+                data-sgqa="{$eSgqa}"
+                style="display:none;">
+            {$eFinish}
+        </button>
+    </div>
+
+    <textarea
+        name="{$eSgqa}"
+        id="answer{$eSgqa}"
+        class="ls-answers ai-interview-answer-field"
+        style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;overflow:hidden;"
+        tabindex="-1"
+        aria-hidden="true"
+    >{$eDispVal}</textarea>
+
+    <input type="hidden" id="ai-tokens-used-{$eSgqa}" value="0" />
+
+</div>
+HTML;
+    }
+
+    /**
+     * Register shared and mode-specific frontend assets.
+     */
+    private function registerInterviewAssets(string $mode, string $assetUrl): void
+    {
+        Yii::app()->clientScript->registerCssFile(
+            $assetUrl . '/ai-interview.css',
+            'screen'
+        );
+
+        if ($mode === 'voice') {
+            Yii::app()->clientScript->registerCssFile(
+                $assetUrl . '/ai-interview-voice.css',
+                'screen'
+            );
+            Yii::app()->clientScript->registerScriptFile(
+                $assetUrl . '/ai-interview-audio.js',
+                CClientScript::POS_END
+            );
+            Yii::app()->clientScript->registerScriptFile(
+                $assetUrl . '/ai-interview-voice.js',
+                CClientScript::POS_END
+            );
+        }
+
+        Yii::app()->clientScript->registerScriptFile(
+            $assetUrl . '/ai-interview.js',
+            CClientScript::POS_END
+        );
+    }
+
+    /**
+     * Static UI labels for the voice widget (English + Polish pilot).
+     */
+    private function getVoiceStaticLabels(string $language): array
+    {
+        $lang = strtolower(substr($language, 0, 2));
+
+        if ($lang === 'pl') {
+            return [
+                'errorDefault' => 'Usługa AI jest obecnie niedostępna. Możesz pominąć to pytanie lub spróbować ponownie.',
+                'retry'        => 'Spróbuj ponownie',
+                'skip'         => 'Pomiń to pytanie',
+                'tokenWarning' => 'Wywiad osiągnął maksymalną długość i został automatycznie zakończony.',
+                'startSpeak'   => 'Zacznij mówić',
+                'doneSpeak'    => 'Gotowe',
+                'finish'       => 'Zakończ wywiad',
+            ];
+        }
+
+        return [
+            'errorDefault' => 'The AI service is currently unavailable. You may skip this question or try again.',
+            'retry'        => 'Retry',
+            'skip'         => 'Skip this question',
+            'tokenWarning' => 'The interview has reached its maximum length and has been automatically concluded.',
+            'startSpeak'   => 'Start speaking',
+            'doneSpeak'    => 'Done speaking',
+            'finish'       => 'Finish interview',
+        ];
     }
 
     // =========================================================================
