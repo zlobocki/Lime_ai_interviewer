@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Glass Session — LimeSurvey survey theme
+    Extends fruity_twentythree. Visual system shared with the AI Interview widget tokens.
+    No product branding is baked into the theme chrome.
+-->
+<config>
+    <metadata>
+        <name>glass_session</name>
+        <title>Glass Session</title>
+        <type>theme</type>
+        <creationDate>19/07/2026</creationDate>
+        <author>AI Survey</author>
+        <authorEmail></authorEmail>
+        <authorUrl></authorUrl>
+        <copyright>Copyright (C) 2026</copyright>
+        <license>GNU General Public License version 2 or later</license>
+        <version>1.0.0</version>
+        <apiVersion>3</apiVersion>
+        <description>
+            <![CDATA[Glass Session — frosted glass panels over a soft mint-to-ice aurora. Teal accent, airy SaaS look for modern AI interview surveys. Extends Fruity TwentyThree. No branding text is hardcoded in the theme.]]>
+        </description>
+        <lastUpdate>2026-07-19 17:30:00</lastUpdate>
+        <extends>fruity_twentythree</extends>
+    </metadata>
+
+    <compatibility>
+        <version>7.0</version>
+        <version>6.0</version>
+    </compatibility>
+
+    <files>
+        <css>
+            <replace>css/custom.css</replace>
+        </css>
+        <js>
+            <replace>scripts/custom.js</replace>
+        </js>
+    </files>
+
+    <options>
+        <hideprivacyinfo type="buttons" category="Simple options" width="4" title="Hide privacy info" options="on|off" optionlabels="Yes|No">off</hideprivacyinfo>
+        <showpopups type="buttons" category="Simple options" width="4" title="Show popups" options="1|0|-1" optionlabels="Popup|On page|No">1</showpopups>
+        <notables type="buttons" category="Simple options" width="4" title="Mobile friendly tables" options="0|1|2" optionlabels="Always tables|Small screens|No tables">1</notables>
+        <showclearall type="buttons" category="Simple options" width="4" title="Show 'Clear all'" options="on|off" optionlabels="Yes|No">off</showclearall>
+        <questionhelptextposition type="buttons" category="Simple options" width="4" title="Question help position" options="top|bottom" optionlabels="Top|Bottom">top</questionhelptextposition>
+        <fixnumauto type="buttons" category="Simple options" width="4" title="Fix numeric value" options="enable|partial|disable" optionlabels="Yes|For expression|No">enable</fixnumauto>
+        <brandlogo type="buttons" category="Images" width="4" title="Logo" options="on|off" optionlabels="Yes|No">off</brandlogo>
+        <brandlogofile type="dropdown" category="Images" width="6" title="Logo file" parent="brandlogo">./files/logo.png</brandlogofile>
+        <backgroundimage type="buttons" category="Images" width="4" title="Background image" options="on|off" optionlabels="Yes|No">off</backgroundimage>
+        <cssframework type="dropdown" colorSwatch="true" category="Simple options" width="12" title="Base color variation">Apple
+            <dropdownoptions>
+                <optgroup>
+                    <option data-mode="add" value="css/variations/theme_apple.css">Apple</option>
+                    <option data-mode="add" value="css/variations/theme_blueberry.css">Blueberry</option>
+                    <option data-mode="add" value="css/variations/theme_grape.css">Grape</option>
+                    <option data-mode="add" value="css/variations/theme_mango.css">Mango</option>
+                </optgroup>
+            </dropdownoptions>
+        </cssframework>
+    </options>
+
+    <engine>
+        <cssframework/>
+        <viewdirectory>views</viewdirectory>
+        <filesdirectory>files</filesdirectory>
+        <packages>
+            <add>pjax</add>
+            <add>moment</add>
+        </packages>
+    </engine>
+</config>

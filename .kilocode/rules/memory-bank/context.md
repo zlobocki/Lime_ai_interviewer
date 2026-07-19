@@ -2,37 +2,36 @@
 
 ## Current State
 
-Working on modernizing the visual design of the AI Interview LimeSurvey experience. Selected direction: **Glass Session**.
+Glass Session visual system selected and implemented as a LimeSurvey **survey theme**. Widget restyle remains with a parallel agent via handoff doc.
 
 ## Recently Completed
 
-- [x] Reviewed live demo survey and existing widget CSS
-- [x] Brainstormed five theme directions (Signal Desk, Glass Session, Neural Studio, Orbit Interview, Mono Protocol)
-- [x] Generated visual mockups for each direction
-- [x] User selected **Glass Session**
-- [x] Constraint confirmed: **no branding text** in theme chrome
-- [x] Wrote widget restyle handoff for the parallel Cursor agent: `docs/ai-interviewer/04-glass-session-widget-restyle.md`
-
-## Current Focus
-
-- Parallel agent: restyle AI Interview **widget** to Glass Session (see handoff doc)
-- Possible follow-up: full LimeSurvey **survey** theme using the same Glass Session tokens (not started)
+- [x] Brainstormed theme directions; user selected **Glass Session**
+- [x] Constraint: **no branding text** in theme chrome
+- [x] Widget restyle handoff: `docs/ai-interviewer/04-glass-session-widget-restyle.md`
+- [x] Created LimeSurvey survey theme: `themes/survey/glass_session/` (extends fruity_twentythree)
+- [x] Packaged zip: `themes/survey/glass_session.zip`
 
 ## Design decisions
 
 | Decision | Choice |
 |----------|--------|
 | Theme direction | Glass Session |
-| Branding in theme | None (no product name / Allie / logos in chrome) |
-| Accent | Teal-mint `#0d9488` (not purple/indigo, not Bootstrap blue) |
-| Surfaces | Frosted glass + hairlines over mint→ice aurora |
-| Split of work | Widget restyle → other agent; survey theme optional later |
+| Survey theme base | Extends `fruity_twentythree` |
+| Branding in theme | None (logo off by default) |
+| Accent | Teal-mint `#0d9488` |
+| Font | DM Sans + fallbacks |
+| Widget work | Parallel agent (handoff doc) |
+
+## Install path (survey theme)
+
+Copy to `<limesurvey>/upload/themes/survey/glass_session/`, then **Install** in Configuration → Themes, and select for the survey.
 
 ## Key files
 
 | Path | Purpose |
 |------|---------|
-| `AIInterview/assets/ai-interview.css` | Plugin widget styles |
-| `AIInterview/question_themes/AIInterview/assets/ai-interview.css` | Question-theme copy (keep in sync) |
-| `AIInterview/assets/ai-interview-voice.css` | Voice widget styles |
-| `docs/ai-interviewer/04-glass-session-widget-restyle.md` | Handoff prompt + tokens for widget agent |
+| `themes/survey/glass_session/` | Survey theme package |
+| `themes/survey/glass_session/css/custom.css` | Glass Session chrome + token overrides |
+| `themes/survey/glass_session.zip` | Distributable zip |
+| `docs/ai-interviewer/04-glass-session-widget-restyle.md` | Widget agent handoff |

@@ -1,0 +1,530 @@
+/******************
+    Glass Session — custom.css
+    ---------------------------
+    Extends fruity_twentythree. Loaded last.
+    Shared tokens with the AI Interview widget restyle.
+    No branding text / logos / product names are injected here.
+******************/
+
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap");
+
+/* --------------------------------------------------------------------------
+   Design tokens (Glass Session)
+   -------------------------------------------------------------------------- */
+:root {
+    --gs-font: "DM Sans", "Avenir Next", "Segoe UI", sans-serif;
+    --gs-ink: #0f172a;
+    --gs-ink-muted: #475569;
+    --gs-hairline: rgba(15, 23, 42, 0.10);
+    --gs-glass: rgba(255, 255, 255, 0.55);
+    --gs-glass-strong: rgba(255, 255, 255, 0.72);
+    --gs-glass-solid: #f3f8fc; /* fallback when backdrop-filter unsupported */
+    --gs-accent: #0d9488;
+    --gs-accent-hover: #0f766e;
+    --gs-accent-soft: rgba(13, 148, 136, 0.16);
+    --gs-accent-ring: rgba(13, 148, 136, 0.28);
+    --gs-user-bubble: #0f172a;
+    --gs-assistant-bubble: rgba(255, 255, 255, 0.70);
+    --gs-danger-bg: rgba(254, 226, 226, 0.72);
+    --gs-warn-bg: rgba(254, 243, 199, 0.72);
+    --gs-ok-bg: rgba(209, 250, 229, 0.72);
+    --gs-radius-panel: 20px;
+    --gs-radius-control: 12px;
+    --gs-shadow: 0 10px 40px rgba(15, 23, 42, 0.08);
+    --gs-shadow-soft: 0 4px 20px rgba(15, 23, 42, 0.06);
+
+    /* Bootstrap / Fruity TwentyThree overrides */
+    --bs-primary: #0d9488;
+    --bs-primary-rgb: 13, 148, 136;
+    --bs-secondary: #64748b;
+    --bs-secondary-rgb: 100, 116, 139;
+    --bs-success: #0f766e;
+    --bs-info: #0e7490;
+    --bs-link-color: #0d9488;
+    --bs-link-hover-color: #0f766e;
+    --bs-body-color: #0f172a;
+    --bs-body-bg: #f7fafc;
+    --bs-border-color: rgba(15, 23, 42, 0.10);
+    --bs-body-font-family: "DM Sans", "Avenir Next", "Segoe UI", sans-serif;
+    --bs-border-radius: 12px;
+    --bs-border-radius-lg: 16px;
+    --bs-btn-font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   Page atmosphere
+   -------------------------------------------------------------------------- */
+html {
+    min-height: 100%;
+}
+
+body.fruity_twentythree,
+body.glass_session,
+body {
+    font-family: var(--gs-font);
+    color: var(--gs-ink);
+    background-color: #f7fafc;
+    background-image:
+        radial-gradient(1200px 700px at 12% -10%, #d8f5ef 0%, transparent 55%),
+        radial-gradient(1000px 600px at 88% 0%, #e8f1ff 0%, transparent 50%),
+        radial-gradient(900px 500px at 50% 100%, #f0fdfa 0%, transparent 45%),
+        linear-gradient(180deg, #f7fafc 0%, #eef5f8 100%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+}
+
+body.brand-logo .navbar-brand.logo-container {
+    /* Theme ships with logo off; keep chrome quiet if a parent option re-enables it without a file */
+}
+
+/* --------------------------------------------------------------------------
+   Top navigation — frosted strip
+   -------------------------------------------------------------------------- */
+body .navbar.fixed-top,
+body #survey-nav.navbar {
+    background: var(--gs-glass-strong) !important;
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    border-bottom: 1px solid var(--gs-hairline);
+    box-shadow: var(--gs-shadow-soft);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    body .navbar.fixed-top,
+    body #survey-nav.navbar {
+        background: var(--gs-glass-solid) !important;
+    }
+}
+
+body .navbar .navbar-brand,
+body .navbar .nav-link,
+body .navbar .dropdown-header {
+    color: var(--gs-ink) !important;
+    font-weight: 500;
+}
+
+body .navbar .dropdown-menu {
+    background: var(--gs-glass-strong);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--gs-hairline);
+    border-radius: var(--gs-radius-control);
+    box-shadow: var(--gs-shadow);
+}
+
+/* --------------------------------------------------------------------------
+   Progress
+   -------------------------------------------------------------------------- */
+body .ls-progress-container,
+body .top-container {
+    background: transparent !important;
+}
+
+body .progress {
+    height: 0.4rem;
+    background: rgba(15, 23, 42, 0.08);
+    border-radius: 999px;
+    overflow: hidden;
+    box-shadow: none;
+}
+
+body .progress-bar {
+    background: linear-gradient(90deg, var(--gs-accent) 0%, #2dd4bf 100%) !important;
+    border-radius: 999px;
+    box-shadow: 0 0 0 0 var(--gs-accent-ring);
+    transition: width 0.35s ease-out, box-shadow 0.35s ease-out;
+}
+
+body .progress-bar[aria-valuenow]:not([aria-valuenow="0"]) {
+    animation: gs-progress-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes gs-progress-breathe {
+    0%, 100% { box-shadow: 0 0 0 0 var(--gs-accent-ring); }
+    50% { box-shadow: 0 0 0 4px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body .progress-bar[aria-valuenow]:not([aria-valuenow="0"]) {
+        animation: none;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   Main glass panels (welcome + questions)
+   -------------------------------------------------------------------------- */
+body #outerframeContainer.outerframe,
+body .outerframe,
+body #main-col,
+body .survey-form-container,
+body #welcome-container,
+body .group-container,
+body .question-container {
+    /* structural hooks; panel look applied below */
+}
+
+body #welcome-container,
+body #outerframeContainer .space-col,
+body .survey-form-container {
+    position: relative;
+}
+
+/* Welcome page composition */
+body #welcome-container {
+    margin-top: 1.25rem;
+    margin-bottom: 1rem;
+    padding: 2rem 1.75rem;
+    background: var(--gs-glass);
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    border: 1px solid var(--gs-hairline);
+    border-radius: var(--gs-radius-panel);
+    box-shadow: var(--gs-shadow);
+    animation: gs-rise-in 0.45s ease-out both;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    body #welcome-container,
+    body .question-container,
+    body .group-container > .group-title,
+    body .modal-content {
+        background: var(--gs-glass-solid) !important;
+    }
+}
+
+body .survey-name.large-heading,
+body .survey-name {
+    color: var(--gs-ink);
+    font-family: var(--gs-font);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    margin-bottom: 0.75rem;
+}
+
+body .survey-description,
+body .survey-welcome,
+body .form-heading,
+body .number-of-questions,
+body .privacy {
+    color: var(--gs-ink-muted);
+    font-size: 1.02rem;
+    line-height: 1.6;
+}
+
+/* Question groups / questions as glass */
+body .group-container {
+    margin-bottom: 1.25rem;
+}
+
+body .group-title,
+body .group-description {
+    color: var(--gs-ink);
+}
+
+body .question-container {
+    background: var(--gs-glass) !important;
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    border: 1px solid var(--gs-hairline) !important;
+    border-radius: var(--gs-radius-panel) !important;
+    box-shadow: var(--gs-shadow-soft);
+    padding: 1.25rem 1.35rem !important;
+    margin-bottom: 1.1rem !important;
+    animation: gs-rise-in 0.4s ease-out both;
+}
+
+body .question-title,
+body .ls-label-question,
+body #ls-question-text-container,
+body .question-container .question-title-container {
+    color: var(--gs-ink);
+    font-weight: 600;
+}
+
+body .question-help,
+body .ls-questionhelp,
+body .text-info {
+    color: var(--gs-ink-muted) !important;
+}
+
+/* --------------------------------------------------------------------------
+   Forms
+   -------------------------------------------------------------------------- */
+body .form-control,
+body .form-select,
+body textarea.form-control,
+body input.form-control {
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid var(--gs-hairline);
+    border-radius: var(--gs-radius-control);
+    color: var(--gs-ink);
+    box-shadow: none;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+body .form-control:focus,
+body .form-select:focus,
+body textarea.form-control:focus,
+body input.form-control:focus {
+    border-color: var(--gs-accent);
+    background: #fff;
+    box-shadow: 0 0 0 4px var(--gs-accent-soft);
+    outline: none;
+}
+
+body .form-check-input:checked {
+    background-color: var(--gs-accent);
+    border-color: var(--gs-accent);
+}
+
+body .form-check-input:focus {
+    box-shadow: 0 0 0 4px var(--gs-accent-soft);
+    border-color: var(--gs-accent);
+}
+
+/* --------------------------------------------------------------------------
+   Buttons / navigator
+   -------------------------------------------------------------------------- */
+body .btn {
+    border-radius: var(--gs-radius-control);
+    font-family: var(--gs-font);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease;
+}
+
+body .btn:active {
+    transform: scale(0.98);
+}
+
+body .btn-primary,
+body .ls-move-btn.btn-primary,
+body #ls-button-submit,
+body .action--ls-button-submit.btn-primary {
+    background: var(--gs-accent) !important;
+    border-color: var(--gs-accent) !important;
+    color: #fff !important;
+    box-shadow: 0 6px 18px var(--gs-accent-soft);
+}
+
+body .btn-primary:hover,
+body .btn-primary:focus,
+body .ls-move-btn.btn-primary:hover,
+body #ls-button-submit:hover {
+    background: var(--gs-accent-hover) !important;
+    border-color: var(--gs-accent-hover) !important;
+    color: #fff !important;
+    box-shadow: 0 8px 22px var(--gs-accent-ring);
+}
+
+body .btn-outline-secondary,
+body .btn-secondary,
+body .ls-saveaction,
+body .ls-loadall {
+    background: var(--gs-glass) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--gs-hairline) !important;
+    color: var(--gs-ink) !important;
+    box-shadow: none;
+}
+
+body .btn-outline-secondary:hover,
+body .btn-secondary:hover,
+body .ls-saveaction:hover,
+body .ls-loadall:hover {
+    background: var(--gs-glass-strong) !important;
+    border-color: rgba(15, 23, 42, 0.16) !important;
+    color: var(--gs-ink) !important;
+}
+
+body #navigator-container,
+body .navigator {
+    margin-top: 0.5rem;
+}
+
+/* --------------------------------------------------------------------------
+   Alerts / modals
+   -------------------------------------------------------------------------- */
+body .alert-danger,
+body .ls-question-mandatory {
+    background: var(--gs-danger-bg) !important;
+    border: 1px solid rgba(185, 28, 28, 0.18) !important;
+    color: #991b1b !important;
+    border-radius: var(--gs-radius-control);
+}
+
+body .alert-warning {
+    background: var(--gs-warn-bg) !important;
+    border: 1px solid rgba(146, 64, 14, 0.18) !important;
+    color: #92400e !important;
+    border-radius: var(--gs-radius-control);
+}
+
+body .alert-success {
+    background: var(--gs-ok-bg) !important;
+    border: 1px solid rgba(6, 95, 70, 0.16) !important;
+    color: #065f46 !important;
+    border-radius: var(--gs-radius-control);
+}
+
+body .modal-content {
+    background: var(--gs-glass-strong);
+    backdrop-filter: blur(18px) saturate(1.2);
+    -webkit-backdrop-filter: blur(18px) saturate(1.2);
+    border: 1px solid var(--gs-hairline);
+    border-radius: var(--gs-radius-panel);
+    box-shadow: var(--gs-shadow);
+    color: var(--gs-ink);
+}
+
+body .modal-header,
+body .modal-footer {
+    border-color: var(--gs-hairline);
+}
+
+/* --------------------------------------------------------------------------
+   Footer
+   -------------------------------------------------------------------------- */
+body .footer,
+body #footer,
+body footer {
+    color: var(--gs-ink-muted);
+    background: transparent !important;
+    border-top: 1px solid transparent;
+}
+
+/* --------------------------------------------------------------------------
+   Motion
+   -------------------------------------------------------------------------- */
+@keyframes gs-rise-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body #welcome-container,
+    body .question-container {
+        animation: none;
+    }
+
+    body .btn:active {
+        transform: none;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   AI Interview widget harmony (if widget CSS not yet updated)
+   Soft bridge so page + widget feel related even before widget restyle lands.
+   Widget-specific styles should still own the chat internals.
+   -------------------------------------------------------------------------- */
+body .ai-interview-widget,
+body .ai-interview-voice-widget {
+    --ai-font: var(--gs-font);
+    --ai-ink: var(--gs-ink);
+    --ai-ink-muted: var(--gs-ink-muted);
+    --ai-hairline: var(--gs-hairline);
+    --ai-glass: var(--gs-glass);
+    --ai-glass-strong: var(--gs-glass-strong);
+    --ai-accent: var(--gs-accent);
+    --ai-accent-soft: var(--gs-accent-soft);
+    --ai-user-bubble: var(--gs-user-bubble);
+    --ai-assistant-bubble: var(--gs-assistant-bubble);
+    --ai-radius-panel: var(--gs-radius-panel);
+    --ai-radius-bubble: 18px;
+    --ai-shadow: var(--gs-shadow);
+
+    font-family: var(--gs-font);
+    background: var(--gs-glass) !important;
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    border: 1px solid var(--gs-hairline) !important;
+    border-radius: var(--gs-radius-panel) !important;
+    box-shadow: var(--gs-shadow) !important;
+    overflow: hidden;
+}
+
+body .ai-interview-messages {
+    background: transparent !important;
+}
+
+body .ai-message.ai-message-assistant .ai-message-bubble {
+    background: var(--gs-assistant-bubble) !important;
+    border: 1px solid var(--gs-hairline) !important;
+    color: var(--gs-ink) !important;
+}
+
+body .ai-message.ai-message-user .ai-message-bubble {
+    background: var(--gs-user-bubble) !important;
+    color: #fff !important;
+    border: none !important;
+}
+
+body .ai-interview-input-area {
+    background: rgba(255, 255, 255, 0.45) !important;
+    border-top: 1px solid var(--gs-hairline) !important;
+}
+
+body .ai-interview-input {
+    background: rgba(255, 255, 255, 0.72) !important;
+    border: 1px solid var(--gs-hairline) !important;
+    border-radius: var(--gs-radius-control) !important;
+    color: var(--gs-ink) !important;
+}
+
+body .ai-interview-input:focus {
+    border-color: var(--gs-accent) !important;
+    box-shadow: 0 0 0 4px var(--gs-accent-soft) !important;
+}
+
+body .ai-btn-primary {
+    background: var(--gs-accent) !important;
+    color: #fff !important;
+}
+
+body .ai-btn-primary:hover:not(:disabled) {
+    background: var(--gs-accent-hover) !important;
+}
+
+body .ai-btn-finish {
+    background: var(--gs-ink) !important;
+    color: #fff !important;
+}
+
+body .ai-btn-secondary {
+    background: var(--gs-glass) !important;
+    border: 1px solid var(--gs-hairline) !important;
+    color: var(--gs-ink) !important;
+}
+
+body .ai-typing-dot {
+    background: var(--gs-accent) !important;
+}
+
+/* --------------------------------------------------------------------------
+   Responsive
+   -------------------------------------------------------------------------- */
+@media (max-width: 767.98px) {
+    body #welcome-container,
+    body .question-container {
+        padding: 1.15rem 1rem !important;
+        border-radius: 16px !important;
+    }
+
+    body .survey-name.large-heading,
+    body .survey-name {
+        font-size: 1.55rem;
+    }
+
+    body .navbar.fixed-top {
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+    }
+}

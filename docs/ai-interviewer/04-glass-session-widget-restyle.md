@@ -130,4 +130,4 @@ Voice (separate stylesheet, align if in scope):
 - Changing interview prompts, API proxy, or transcript format
 - Adding brand wordmarks or interviewer marketing copy
 
-If coordinating with a survey-theme agent: survey chrome should use the same aurora + glass + teal tokens so the page and widget feel like one composition.
+Survey theme (same tokens): `themes/survey/glass_session/` — LimeSurvey theme extending `fruity_twentythree`. Install under `upload/themes/survey/glass_session/`.
