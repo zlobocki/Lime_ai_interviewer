@@ -36,8 +36,8 @@
 }
 
 .ai-voice-avatar {
-    width: 48px;
-    max-width: 48px;
+    width: 96px;
+    max-width: 96px;
     height: auto;
     object-fit: contain;
     filter: drop-shadow(0 4px 12px rgba(56, 189, 248, 0.15));
@@ -177,8 +177,8 @@
     }
 
     .ai-voice-avatar {
-        width: 40px;
-        max-width: 40px;
+        width: 80px;
+        max-width: 80px;
     }
 
     .ai-voice-question {

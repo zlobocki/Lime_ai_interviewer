@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.13.2
+ * @version     1.13.3
  * @since       LimeSurvey 6.0
  */
 
@@ -945,6 +945,14 @@ HTML;
      data-avatar-thinking="{$eAvatarThinking}">
 
     <div class="ai-voice-stage">
+        <div class="ai-voice-avatar-wrap">
+            <img class="ai-voice-avatar"
+                 id="ai-avatar-{$eSgqa}"
+                 src="{$eAvatarThinking}"
+                 alt="Allie"
+                 width="96"
+                 height="96" />
+        </div>
         <div class="ai-voice-stage-content">
             <p class="ai-voice-question"
                id="ai-question-{$eSgqa}"
@@ -961,14 +969,6 @@ HTML;
                    optimum="0.5"
                    value="0"
                    aria-label="Microphone level"></meter>
-        </div>
-        <div class="ai-voice-avatar-wrap">
-            <img class="ai-voice-avatar"
-                 id="ai-avatar-{$eSgqa}"
-                 src="{$eAvatarThinking}"
-                 alt="Allie"
-                 width="48"
-                 height="48" />
         </div>
     </div>
 
