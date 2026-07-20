@@ -374,8 +374,7 @@ body .ls-loadall:hover {
 }
 
 /* Question pages: keep navigator under the content column */
-body #navigator-container:not(:has(~ #welcome-container)),
-body .navigator {
+body:not(:has(#welcome-container)) #navigator-container {
     margin-top: 0.5rem;
 }
 
