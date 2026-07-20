@@ -373,10 +373,13 @@ body .ls-loadall:hover {
     color: var(--gs-ink) !important;
 }
 
-body #navigator-container,
+/* Question pages: keep navigator under the content column */
+body #navigator-container:not(:has(~ #welcome-container)),
 body .navigator {
     margin-top: 0.5rem;
 }
+
+/* Welcome page navigator spacing is handled in the welcome composition block */
 
 /* --------------------------------------------------------------------------
    Alerts / modals
