@@ -153,38 +153,72 @@ body .progress-bar[aria-valuenow]:not([aria-valuenow="0"]) {
 /* --------------------------------------------------------------------------
    Main glass panels (welcome + questions)
    -------------------------------------------------------------------------- */
-body #outerframeContainer.outerframe,
-body .outerframe,
-body #main-col,
-body .survey-form-container,
-body #welcome-container,
-body .group-container,
-body .question-container {
-    /* structural hooks; panel look applied below */
-}
-
 body #welcome-container,
 body #outerframeContainer .space-col,
 body .survey-form-container {
     position: relative;
 }
 
-/* Welcome page composition */
+/*
+ * Fruity TwentyThree caps #welcome-container at 750px but leaves
+ * #navigator-container full column width — so Next floats away from the
+ * welcome card as the viewport changes. Keep welcome + navigator aligned.
+ */
+body #welcome-container,
+body:has(#welcome-container) #navigator-container,
+body:has(#welcome-container) .privacy {
+    max-width: 750px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+}
+
+/* Welcome page: one glass composition (copy + actions) */
 body #welcome-container {
     margin-top: 1.25rem;
-    margin-bottom: 1rem;
-    padding: 2rem 1.75rem;
+    margin-bottom: 0;
+    padding: 2rem 1.75rem 1.25rem;
     background: var(--gs-glass);
     backdrop-filter: blur(16px) saturate(1.2);
     -webkit-backdrop-filter: blur(16px) saturate(1.2);
     border: 1px solid var(--gs-hairline);
-    border-radius: var(--gs-radius-panel);
+    border-bottom: none;
+    border-radius: var(--gs-radius-panel) var(--gs-radius-panel) 0 0;
     box-shadow: var(--gs-shadow);
     animation: gs-rise-in 0.45s ease-out both;
 }
 
+body:has(#welcome-container) .privacy {
+    margin-top: 0;
+    margin-bottom: 0;
+    padding: 0 1.75rem;
+    background: var(--gs-glass);
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    border-left: 1px solid var(--gs-hairline);
+    border-right: 1px solid var(--gs-hairline);
+}
+
+body:has(#welcome-container) #navigator-container {
+    margin-top: 0;
+    margin-bottom: 1.25rem;
+    padding: 0.75rem 1.75rem 1.5rem;
+    background: var(--gs-glass);
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    border: 1px solid var(--gs-hairline);
+    border-top: 1px solid var(--gs-hairline);
+    border-radius: 0 0 var(--gs-radius-panel) var(--gs-radius-panel);
+    box-shadow: var(--gs-shadow);
+    /* Keep Bootstrap row gutters from spilling past the panel */
+    --bs-gutter-x: 0;
+}
+
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
     body #welcome-container,
+    body:has(#welcome-container) .privacy,
+    body:has(#welcome-container) #navigator-container,
     body .question-container,
     body .group-container > .group-title,
     body .modal-content {
