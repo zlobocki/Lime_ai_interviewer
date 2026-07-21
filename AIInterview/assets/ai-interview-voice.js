@@ -335,6 +335,7 @@
             if (mode !== 'speak' && mode !== 'type') return;
             inputMode = mode;
             updateInputModeUI();
+            refreshControls();
             setTurnStatus();
         }
 
