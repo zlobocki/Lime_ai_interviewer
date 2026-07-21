@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.16.1
+ * @version     1.17.0
  * @since       LimeSurvey 6.0
  */
 
@@ -394,6 +394,22 @@ class AIInterview extends PluginBase
                 ),
                 'caption'  => gT('Prompt to Submit Survey'),
             ],
+            'ai_interview_live_transcript' => [
+                'types'    => 'T',
+                'category' => gT('AI Interview Settings'),
+                'sortorder'=> 6,
+                'inputtype'=> 'singleselect',
+                'options'  => [
+                    '0' => gT('No — hide text box while speaking'),
+                    '1' => gT('Yes — show live transcript while speaking'),
+                ],
+                'default'  => '0',
+                'help'     => gT(
+                    'Voice mode only. When enabled, a text box appears while the respondent speaks '
+                    . 'and fills with live dictation. After Done, they can review and edit before sending.'
+                ),
+                'caption'  => gT('Live Transcript While Speaking'),
+            ],
         ];
 
         $event->append('questionAttributes', $questionAttributes);
@@ -458,6 +474,7 @@ class AIInterview extends PluginBase
         $mandatory    = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mandatory', '0');
         $mode         = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mode', 'chat');
         $submitPrompt = (string) $this->getQuestionAttribute($questionId, 'ai_interview_submit_prompt', '0');
+        $liveTranscript = (string) $this->getQuestionAttribute($questionId, 'ai_interview_live_transcript', '0');
         $isVoice      = ($mode !== 'chat');
 
         // Public plugin URLs (never /admin/ prefixed)
@@ -499,6 +516,7 @@ class AIInterview extends PluginBase
                 $language,
                 $mandatory,
                 $submitPrompt,
+                $liveTranscript,
                 $dispVal
             );
         } else {
@@ -611,6 +629,7 @@ class AIInterview extends PluginBase
         $mandatory    = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mandatory', '0');
         $mode         = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mode', 'chat');
         $submitPrompt = (string) $this->getQuestionAttribute($questionId, 'ai_interview_submit_prompt', '0');
+        $liveTranscript = (string) $this->getQuestionAttribute($questionId, 'ai_interview_live_transcript', '0');
         $isVoice      = ($mode !== 'chat');
 
         $ajaxUrl       = $this->getPluginDirectUrl('chat');
@@ -643,6 +662,7 @@ class AIInterview extends PluginBase
                 $language,
                 $mandatory,
                 $submitPrompt,
+                $liveTranscript,
                 ''
             );
         } else {
@@ -895,6 +915,7 @@ HTML;
         string $language,
         string $mandatory,
         string $submitPrompt,
+        string $liveTranscript,
         string $dispVal
     ): string {
         $labels = $this->getVoiceStaticLabels($language);
@@ -906,6 +927,7 @@ HTML;
         $eLanguage      = htmlspecialchars($language, ENT_QUOTES, 'UTF-8');
         $eMandatory     = htmlspecialchars($mandatory, ENT_QUOTES, 'UTF-8');
         $eSubmitPrompt  = htmlspecialchars($submitPrompt, ENT_QUOTES, 'UTF-8');
+        $eLiveTranscript = htmlspecialchars($liveTranscript, ENT_QUOTES, 'UTF-8');
         $eDispVal       = htmlspecialchars($dispVal, ENT_QUOTES, 'UTF-8');
 
         $avatarBase = rtrim($assetUrl, '/');
@@ -936,6 +958,7 @@ HTML;
         $eTypePlaceholder = htmlspecialchars($labels['typePlaceholder'], ENT_QUOTES, 'UTF-8');
         $eSend           = htmlspecialchars($labels['send'], ENT_QUOTES, 'UTF-8');
         $eInputModeLabel = htmlspecialchars($labels['inputModeLabel'], ENT_QUOTES, 'UTF-8');
+        $eLivePreviewLabel = htmlspecialchars($labels['livePreviewLabel'], ENT_QUOTES, 'UTF-8');
 
         return <<<HTML
 <div class="ai-interview-widget ai-interview-voice-widget"
@@ -950,6 +973,7 @@ HTML;
      data-language="{$eLanguage}"
      data-mandatory="{$eMandatory}"
      data-submit-prompt="{$eSubmitPrompt}"
+     data-live-transcript="{$eLiveTranscript}"
      data-avatar-idle="{$eAvatarIdle}"
      data-avatar-listening="{$eAvatarListening}"
      data-avatar-speaking="{$eAvatarSpeaking}"
@@ -1110,6 +1134,9 @@ HTML;
              aria-labelledby="ai-mode-type-{$eSgqa}"
              hidden>
             <div class="ai-interview-input-area ai-voice-type-input">
+                <p class="ai-voice-live-label"
+                   id="ai-live-label-{$eSgqa}"
+                   hidden>{$eLivePreviewLabel}</p>
                 <textarea
                     class="ai-interview-input"
                     id="ai-voice-input-{$eSgqa}"
@@ -1250,6 +1277,7 @@ HTML;
                 'yourTurnType'     => 'Twoja kolej — wpisz odpowiedź.',
                 'mandatoryHint'    => 'Odpowiedz przynajmniej raz, zanim przejdziesz dalej.',
                 'inputModeLabel'   => 'Sposób odpowiedzi',
+                'livePreviewLabel' => 'To, co mówisz, pojawi się tutaj na żywo.',
             ];
         }
 
@@ -1280,6 +1308,7 @@ HTML;
             'yourTurnType'     => 'Your turn — type your answer.',
             'mandatoryHint'    => 'Please answer at least once before continuing.',
             'inputModeLabel'   => 'Answer method',
+            'livePreviewLabel' => 'What you say will appear here live.',
         ];
     }
 

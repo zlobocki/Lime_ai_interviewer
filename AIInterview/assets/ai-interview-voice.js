@@ -1,5 +1,5 @@
 /**
- * AI Interview — Voice widget (M1 + M1.5 + M2a hybrid input)
+ * AI Interview — Voice widget (M1 + M1.5 + M2a + M2b live transcript)
  * Welcome/mic check, speak or type answers, Allie asks questions on screen.
  */
 (function () {
@@ -36,7 +36,10 @@
             send: 'Send',
             typePrompt: 'Type your answer and tap Send.',
             yourTurnType: 'Your turn — type your answer.',
-            mandatoryHint: 'Please answer at least once before continuing.'
+            mandatoryHint: 'Please answer at least once before continuing.',
+            reviewPrompt: 'Review your answer, edit if needed, then tap Send.',
+            sendAnswer: 'Send answer',
+            livePreviewLabel: 'What you say will appear here live.'
         },
         pl: {
             preparing: 'Przygotowuję wywiad…',
@@ -68,9 +71,21 @@
             send: 'Wyślij',
             typePrompt: 'Wpisz odpowiedź i kliknij Wyślij.',
             yourTurnType: 'Twoja kolej — wpisz odpowiedź.',
-            mandatoryHint: 'Odpowiedz przynajmniej raz, zanim przejdziesz dalej.'
+            mandatoryHint: 'Odpowiedz przynajmniej raz, zanim przejdziesz dalej.',
+            reviewPrompt: 'Sprawdź odpowiedź, popraw jeśli trzeba, potem kliknij Wyślij.',
+            sendAnswer: 'Wyślij odpowiedź',
+            livePreviewLabel: 'To, co mówisz, pojawi się tutaj na żywo.'
         }
     };
+
+    function getSpeechRecognitionCtor() {
+        return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+    }
+
+    function speechLocaleFromLanguage(lang) {
+        var code = (lang || 'en').toLowerCase().slice(0, 2);
+        return code === 'pl' ? 'pl-PL' : 'en-GB';
+    }
 
     function t(lang, key) {
         var code = (lang || 'en').toLowerCase().slice(0, 2);
@@ -88,6 +103,7 @@
         var prompt = widget.dataset.prompt || '';
         var maxTokens = parseInt(widget.dataset.maxTokens, 10) || 6000;
         var submitPromptEnabled = widget.dataset.submitPrompt === '1';
+        var liveTranscriptEnabled = widget.dataset.liveTranscript === '1';
 
         var welcomeEl = document.getElementById('ai-welcome-' + sgqa);
         var welcomeMeterEl = document.getElementById('ai-welcome-meter-' + sgqa);
@@ -111,6 +127,7 @@
         var modeTypeBtn = document.getElementById('ai-mode-type-' + sgqa);
         var typeInputEl = document.getElementById('ai-voice-input-' + sgqa);
         var typeSendBtn = document.getElementById('ai-voice-send-' + sgqa);
+        var livePreviewLabelEl = document.getElementById('ai-live-label-' + sgqa);
         var answerField = document.getElementById('answer' + sgqa);
         var tokensUsedEl = document.getElementById('ai-tokens-used-' + sgqa);
         var submitModalEl = document.getElementById('ai-submit-modal-' + sgqa);
@@ -149,6 +166,10 @@
         var transcriptVisible = false;
         var inputMode = 'speak';
         var isRecording = false;
+        var isReviewingSpeech = false;
+        var speechRecognition = null;
+        var liveTranscriptFinal = '';
+        var typeSendDefaultLabel = typeSendBtn ? typeSendBtn.textContent : '';
 
         if (answerField && !answerField.value.trim()) {
             answerField.value = '[AI Interview in progress]';
@@ -331,7 +352,7 @@
         }
 
         function setInputMode(mode) {
-            if (finished || chatLoading || isRecording) return;
+            if (finished || chatLoading || isRecording || isReviewingSpeech) return;
             if (mode !== 'speak' && mode !== 'type') return;
             inputMode = mode;
             updateInputModeUI();
@@ -339,8 +360,15 @@
             setTurnStatus();
         }
 
+        function shouldShowTypeArea() {
+            if (inputMode === 'type') return true;
+            return liveTranscriptEnabled && inputMode === 'speak'
+                && (isRecording || isReviewingSpeech);
+        }
+
         function updateInputModeUI() {
             var speakActive = inputMode === 'speak';
+            var showTypeArea = shouldShowTypeArea();
 
             if (modeSpeakBtn) {
                 modeSpeakBtn.classList.toggle('is-active', speakActive);
@@ -355,8 +383,21 @@
                 speakAreaEl.hidden = !speakActive;
             }
             if (typeAreaEl) {
-                typeAreaEl.classList.toggle('is-hidden', speakActive);
-                typeAreaEl.hidden = speakActive;
+                typeAreaEl.classList.toggle('is-hidden', !showTypeArea);
+                typeAreaEl.hidden = !showTypeArea;
+                typeAreaEl.classList.toggle(
+                    'is-live-preview',
+                    liveTranscriptEnabled && speakActive && isRecording
+                );
+                typeAreaEl.classList.toggle('is-review', isReviewingSpeech);
+            }
+            if (livePreviewLabelEl) {
+                livePreviewLabelEl.hidden = !(liveTranscriptEnabled && speakActive && isRecording);
+            }
+            if (typeSendBtn) {
+                typeSendBtn.textContent = isReviewingSpeech
+                    ? t(language, 'sendAnswer')
+                    : typeSendDefaultLabel;
             }
         }
 
@@ -372,21 +413,39 @@
 
         function refreshControls() {
             var canInteract = !finished && !chatLoading;
+            updateInputModeUI();
 
             if (speakBtn) {
-                speakBtn.disabled = !canInteract || inputMode !== 'speak' || isRecording;
+                speakBtn.disabled = !canInteract || inputMode !== 'speak' || isRecording || isReviewingSpeech;
             }
             if (stopSpeakBtn) {
                 stopSpeakBtn.disabled = !isRecording;
             }
+
             if (typeInputEl) {
-                typeInputEl.disabled = !canInteract || inputMode !== 'type';
-            }
-            if (typeSendBtn) {
-                typeSendBtn.disabled = !canInteract || inputMode !== 'type';
+                if (isRecording && liveTranscriptEnabled) {
+                    typeInputEl.readOnly = true;
+                    typeInputEl.disabled = false;
+                } else if (inputMode === 'type' && canInteract) {
+                    typeInputEl.readOnly = false;
+                    typeInputEl.disabled = false;
+                } else if (isReviewingSpeech && canInteract) {
+                    typeInputEl.readOnly = false;
+                    typeInputEl.disabled = false;
+                } else {
+                    typeInputEl.readOnly = false;
+                    typeInputEl.disabled = true;
+                }
             }
 
-            var canSwitchMode = canInteract && !isRecording;
+            if (typeSendBtn) {
+                var showSend = inputMode === 'type' || isReviewingSpeech;
+                typeSendBtn.hidden = !showSend;
+                typeSendBtn.disabled = !canInteract || isRecording
+                    || (inputMode !== 'type' && !isReviewingSpeech);
+            }
+
+            var canSwitchMode = canInteract && !isRecording && !isReviewingSpeech;
             if (modeSpeakBtn) modeSpeakBtn.disabled = !canSwitchMode;
             if (modeTypeBtn) modeTypeBtn.disabled = !canSwitchMode;
         }
@@ -460,11 +519,83 @@
         }
 
         function sendTypedMessage() {
-            if (inputMode !== 'type' || !typeInputEl || finished || chatLoading) return;
+            if (finished || chatLoading || !typeInputEl) return;
+            if (inputMode !== 'type' && !isReviewingSpeech) return;
             var text = typeInputEl.value.trim();
             if (!text) return;
             typeInputEl.value = '';
+            isReviewingSpeech = false;
+            updateInputModeUI();
             submitUserMessage(text);
+        }
+
+        function startLiveTranscript() {
+            if (!liveTranscriptEnabled) return;
+
+            var SpeechRecognition = getSpeechRecognitionCtor();
+            if (!SpeechRecognition) return;
+
+            stopLiveTranscript();
+
+            liveTranscriptFinal = '';
+            if (typeInputEl) typeInputEl.value = '';
+
+            speechRecognition = new SpeechRecognition();
+            speechRecognition.lang = speechLocaleFromLanguage(language);
+            speechRecognition.continuous = true;
+            speechRecognition.interimResults = true;
+
+            speechRecognition.onresult = function (event) {
+                var interim = '';
+                var finalText = liveTranscriptFinal;
+                for (var i = event.resultIndex; i < event.results.length; i++) {
+                    var piece = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalText += piece + ' ';
+                    } else {
+                        interim += piece;
+                    }
+                }
+                liveTranscriptFinal = finalText;
+                if (typeInputEl) {
+                    typeInputEl.value = (finalText + interim).trim();
+                }
+            };
+
+            speechRecognition.onerror = function () {
+                /* Non-fatal — Azure transcription remains authoritative on Done. */
+            };
+
+            try {
+                speechRecognition.start();
+            } catch (err) {
+                speechRecognition = null;
+            }
+        }
+
+        function stopLiveTranscript() {
+            if (!speechRecognition) return;
+            try {
+                speechRecognition.stop();
+            } catch (err) {
+                /* ignore */
+            }
+            speechRecognition = null;
+        }
+
+        function enterSpeechReview(text) {
+            isReviewingSpeech = true;
+            if (typeInputEl) typeInputEl.value = text;
+            refreshControls();
+            setAvatar('speaking');
+            setStatus(t(language, 'reviewPrompt'));
+            if (typeInputEl) {
+                typeInputEl.focus();
+                var len = typeInputEl.value.length;
+                if (typeof typeInputEl.setSelectionRange === 'function') {
+                    typeInputEl.setSelectionRange(len, len);
+                }
+            }
         }
 
         function showAssistantMessage(text) {
@@ -524,10 +655,12 @@
                     mediaRecorder.start(250);
                     meterControl = window.AIInterviewAudio.startLevelMeter(stream, meterEl);
                     isRecording = true;
+                    if (typeInputEl && liveTranscriptEnabled) typeInputEl.value = '';
+                    startLiveTranscript();
+                    refreshControls();
                     setAvatar('listening');
                     setStatus(t(language, 'listening'));
                     speakBtn.classList.add('is-recording');
-                    refreshControls();
                 })
                 .catch(function () {
                     showError(t(language, 'micDenied'));
@@ -535,6 +668,7 @@
         }
 
         function stopRecording() {
+            stopLiveTranscript();
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
                 if (typeof mediaRecorder.requestData === 'function') {
                     mediaRecorder.requestData();
@@ -551,6 +685,7 @@
         function processRecording(recordedBlob) {
             if (!recordedBlob || recordedBlob.size === 0) {
                 showError(t(language, 'noSpeech'));
+                isReviewingSpeech = false;
                 refreshControls();
                 setAvatar('speaking');
                 setStatus(t(language, 'yourTurn'));
@@ -563,11 +698,20 @@
                 })
                 .then(function (text) {
                     text = (text || '').trim();
+                    if (!text && typeInputEl) {
+                        text = typeInputEl.value.trim();
+                    }
                     if (!text) {
                         showError(t(language, 'noSpeech'));
+                        isReviewingSpeech = false;
                         refreshControls();
                         setAvatar('speaking');
                         setStatus(t(language, 'yourTurn'));
+                        return;
+                    }
+
+                    if (liveTranscriptEnabled) {
+                        enterSpeechReview(text);
                         return;
                     }
 
@@ -575,6 +719,7 @@
                 })
                 .catch(function (err) {
                     showError(err.message || t(language, 'errorGeneric'));
+                    isReviewingSpeech = false;
                     refreshControls();
                     setAvatar('speaking');
                     setStatus(t(language, 'yourTurn'));
@@ -668,6 +813,8 @@
             finished = true;
             chatLoading = false;
             isRecording = false;
+            isReviewingSpeech = false;
+            stopLiveTranscript();
             refreshControls();
             if (typeInputEl) typeInputEl.disabled = true;
             if (finishBtn) finishBtn.style.display = 'none';
@@ -724,6 +871,8 @@
             finished = true;
             chatLoading = false;
             isRecording = false;
+            isReviewingSpeech = false;
+            stopLiveTranscript();
             stopWelcomeMicCheck();
             answerField.value = '[Interview skipped — AI service unavailable]';
             refreshControls();

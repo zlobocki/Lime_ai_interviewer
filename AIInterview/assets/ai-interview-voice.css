@@ -319,6 +319,33 @@ body .ai-interview-widget.ai-interview-voice-widget {
     width: 100%;
 }
 
+.ai-voice-live-label {
+    margin: 0 0 8px;
+    font-size: 0.82rem;
+    color: var(--ai-accent-hover);
+    text-align: left;
+}
+
+.ai-voice-type-area.is-live-preview .ai-interview-input {
+    background: rgba(255, 255, 255, 0.5);
+    color: var(--ai-ink-muted);
+    cursor: default;
+}
+
+.ai-voice-type-area.is-live-preview .ai-interview-input:focus {
+    box-shadow: none;
+    animation: none;
+    border-color: var(--ai-hairline);
+}
+
+.ai-voice-type-area.is-live-preview .ai-interview-actions {
+    display: none;
+}
+
+.ai-voice-type-area.is-review .ai-interview-input {
+    background: rgba(255, 255, 255, 0.82);
+}
+
 .ai-voice-finish-row {
     display: flex;
     justify-content: center;
