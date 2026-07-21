@@ -140,6 +140,22 @@
     global.AIInterviewAudio = {
         pickRecorderMimeType: pickRecorderMimeType,
         convertBlobToWav16kMono: convertBlobToWav16kMono,
-        startLevelMeter: startLevelMeter
+        startLevelMeter: startLevelMeter,
+        unlockPlayback: function () {
+            var AudioContextCtor = global.AudioContext || global.webkitAudioContext;
+            var unlockPromise = Promise.resolve();
+            if (AudioContextCtor) {
+                var ctx = new AudioContextCtor();
+                unlockPromise = ctx.resume().then(function () {
+                    return ctx.close();
+                }).catch(function () { /* ignore */ });
+            }
+            return unlockPromise.then(function () {
+                var silent = new Audio();
+                silent.preload = 'auto';
+                silent.src = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAADhAC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjU0AAAAAAAAAAAAAAAAJAYAAAAAAAAABIRj+AAAAAA=';
+                return silent.play().catch(function () { /* ignore */ });
+            });
+        }
     };
 }(window));

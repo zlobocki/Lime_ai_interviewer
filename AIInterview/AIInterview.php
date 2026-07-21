@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.17.0
+ * @version     1.18.0
  * @since       LimeSurvey 6.0
  */
 
@@ -51,13 +51,13 @@ class AIInterview extends PluginBase
         'azure_speech_key' => [
             'type'    => 'string',
             'label'   => 'Azure Speech API Key',
-            'help'    => 'Azure AI Speech resource key (EU region). Used for voice transcription. Never exposed to respondents.',
+            'help'    => 'Azure AI Speech resource key (EU region). Used for voice transcription and text-to-speech. Never exposed to respondents.',
             'default' => '',
         ],
         'azure_speech_region' => [
             'type'    => 'string',
             'label'   => 'Azure Speech Region',
-            'help'    => 'EU region for speech processing, e.g. westeurope or polandcentral.',
+            'help'    => 'EU region for speech processing (transcription and TTS), e.g. westeurope or polandcentral.',
             'default' => 'westeurope',
         ],
     ];
@@ -410,6 +410,22 @@ class AIInterview extends PluginBase
                 ),
                 'caption'  => gT('Live Transcript While Speaking'),
             ],
+            'ai_interview_ai_speech' => [
+                'types'    => 'T',
+                'category' => gT('AI Interview Settings'),
+                'sortorder'=> 7,
+                'inputtype'=> 'singleselect',
+                'options'  => [
+                    '0' => gT('No — questions shown as text only'),
+                    '1' => gT('Yes — read questions aloud (Azure TTS)'),
+                ],
+                'default'  => '0',
+                'help'     => gT(
+                    'Voice mode only. When enabled, Allie reads each AI question aloud using '
+                    . 'Azure neural text-to-speech (EU). Question text is sent to Azure for audio generation.'
+                ),
+                'caption'  => gT('Read Questions Aloud'),
+            ],
         ];
 
         $event->append('questionAttributes', $questionAttributes);
@@ -475,11 +491,15 @@ class AIInterview extends PluginBase
         $mode         = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mode', 'chat');
         $submitPrompt = (string) $this->getQuestionAttribute($questionId, 'ai_interview_submit_prompt', '0');
         $liveTranscript = (string) $this->getQuestionAttribute($questionId, 'ai_interview_live_transcript', '0');
+        $aiSpeech       = (string) $this->getQuestionAttribute($questionId, 'ai_interview_ai_speech', '0');
         $isVoice      = ($mode !== 'chat');
 
         // Public plugin URLs (never /admin/ prefixed)
         $ajaxUrl        = $this->getPluginDirectUrl('chat');
         $transcribeUrl  = $isVoice ? $this->getPluginDirectUrl('voiceTranscribe') : '';
+        $synthesizeUrl  = ($isVoice && $aiSpeech === '1')
+            ? $this->getPluginDirectUrl('voiceSynthesize')
+            : '';
 
         // Get the survey ID and language
         $surveyId = (int) $oQuestion->sid;
@@ -510,6 +530,7 @@ class AIInterview extends PluginBase
                 $surveyId,
                 $ajaxUrl,
                 $transcribeUrl,
+                $synthesizeUrl,
                 $assetUrl,
                 $prompt,
                 $maxTokens,
@@ -517,6 +538,7 @@ class AIInterview extends PluginBase
                 $mandatory,
                 $submitPrompt,
                 $liveTranscript,
+                $aiSpeech,
                 $dispVal
             );
         } else {
@@ -630,10 +652,14 @@ class AIInterview extends PluginBase
         $mode         = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mode', 'chat');
         $submitPrompt = (string) $this->getQuestionAttribute($questionId, 'ai_interview_submit_prompt', '0');
         $liveTranscript = (string) $this->getQuestionAttribute($questionId, 'ai_interview_live_transcript', '0');
+        $aiSpeech       = (string) $this->getQuestionAttribute($questionId, 'ai_interview_ai_speech', '0');
         $isVoice      = ($mode !== 'chat');
 
         $ajaxUrl       = $this->getPluginDirectUrl('chat');
         $transcribeUrl = $isVoice ? $this->getPluginDirectUrl('voiceTranscribe') : '';
+        $synthesizeUrl = ($isVoice && $aiSpeech === '1')
+            ? $this->getPluginDirectUrl('voiceSynthesize')
+            : '';
 
         $surveyId = (int) $oQuestion->sid;
         $language = $this->getSessionLanguage($surveyId);
@@ -656,6 +682,7 @@ class AIInterview extends PluginBase
                 $surveyId,
                 $ajaxUrl,
                 $transcribeUrl,
+                $synthesizeUrl,
                 $assetUrl,
                 $prompt,
                 $maxTokens,
@@ -663,6 +690,7 @@ class AIInterview extends PluginBase
                 $mandatory,
                 $submitPrompt,
                 $liveTranscript,
+                $aiSpeech,
                 ''
             );
         } else {
@@ -909,6 +937,7 @@ HTML;
         int    $surveyId,
         string $ajaxUrl,
         string $transcribeUrl,
+        string $synthesizeUrl,
         string $assetUrl,
         string $prompt,
         int    $maxTokens,
@@ -916,6 +945,7 @@ HTML;
         string $mandatory,
         string $submitPrompt,
         string $liveTranscript,
+        string $aiSpeech,
         string $dispVal
     ): string {
         $labels = $this->getVoiceStaticLabels($language);
@@ -923,11 +953,13 @@ HTML;
         $eSgqa          = htmlspecialchars($sgqa, ENT_QUOTES, 'UTF-8');
         $eAjaxUrl       = htmlspecialchars($ajaxUrl, ENT_QUOTES, 'UTF-8');
         $eTranscribeUrl = htmlspecialchars($transcribeUrl, ENT_QUOTES, 'UTF-8');
+        $eSynthesizeUrl = htmlspecialchars($synthesizeUrl, ENT_QUOTES, 'UTF-8');
         $ePrompt        = htmlspecialchars($prompt, ENT_QUOTES, 'UTF-8');
         $eLanguage      = htmlspecialchars($language, ENT_QUOTES, 'UTF-8');
         $eMandatory     = htmlspecialchars($mandatory, ENT_QUOTES, 'UTF-8');
         $eSubmitPrompt  = htmlspecialchars($submitPrompt, ENT_QUOTES, 'UTF-8');
         $eLiveTranscript = htmlspecialchars($liveTranscript, ENT_QUOTES, 'UTF-8');
+        $eAiSpeech      = htmlspecialchars($aiSpeech, ENT_QUOTES, 'UTF-8');
         $eDispVal       = htmlspecialchars($dispVal, ENT_QUOTES, 'UTF-8');
 
         $avatarBase = rtrim($assetUrl, '/');
@@ -968,6 +1000,8 @@ HTML;
      data-survey-id="{$surveyId}"
      data-ajax-url="{$eAjaxUrl}"
      data-transcribe-url="{$eTranscribeUrl}"
+     data-synthesize-url="{$eSynthesizeUrl}"
+     data-ai-speech="{$eAiSpeech}"
      data-prompt="{$ePrompt}"
      data-max-tokens="{$maxTokens}"
      data-language="{$eLanguage}"
@@ -1278,6 +1312,7 @@ HTML;
                 'mandatoryHint'    => 'Odpowiedz przynajmniej raz, zanim przejdziesz dalej.',
                 'inputModeLabel'   => 'Sposób odpowiedzi',
                 'livePreviewLabel' => 'To, co mówisz, pojawi się tutaj na żywo.',
+                'allieSpeaking'    => 'Allie mówi…',
             ];
         }
 
@@ -1309,6 +1344,7 @@ HTML;
             'mandatoryHint'    => 'Please answer at least once before continuing.',
             'inputModeLabel'   => 'Answer method',
             'livePreviewLabel' => 'What you say will appear here live.',
+            'allieSpeaking'    => 'Allie is speaking…',
         ];
     }
 
@@ -1356,6 +1392,12 @@ HTML;
 
         if ($function === 'voiceTranscribe') {
             $this->handleVoiceTranscribeRequest();
+            $event->set('success', true);
+            return;
+        }
+
+        if ($function === 'voiceSynthesize') {
+            $this->handleVoiceSynthesizeRequest();
             $event->set('success', true);
             return;
         }
@@ -1652,6 +1694,57 @@ HTML;
         }
 
         $this->sendJsonResponse($response);
+    }
+
+    /**
+     * Synthesize AI question text via Azure neural TTS (EU).
+     */
+    private function handleVoiceSynthesizeRequest(): void
+    {
+        $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+        if ($method !== 'POST') {
+            $this->sendJsonResponse(['error' => 'Method not allowed. Use POST.'], 405);
+            return;
+        }
+
+        $surveyId = isset($_POST['surveyId']) ? (int) $_POST['surveyId'] : 0;
+        $language = isset($_POST['language']) ? (string) $_POST['language'] : 'en';
+        $text     = isset($_POST['text']) ? (string) $_POST['text'] : '';
+
+        if (!$this->canUseVoiceApi($surveyId)) {
+            $this->sendJsonResponse(['error' => 'Unauthorized'], 403);
+            return;
+        }
+
+        if (trim($text) === '') {
+            $this->sendJsonResponse(['error' => 'Missing text for synthesis.'], 400);
+            return;
+        }
+
+        $speechKey    = trim((string) $this->get('azure_speech_key', null, null, ''));
+        $speechRegion = trim((string) $this->get('azure_speech_region', null, null, 'westeurope'));
+
+        if ($speechKey === '') {
+            $this->sendJsonResponse([
+                'error' => 'Azure Speech is not configured. Set the API key in Plugin Manager -> AIInterview.',
+            ], 503);
+            return;
+        }
+
+        $client = new AzureSpeechClient($speechKey, $speechRegion);
+        $result = $client->synthesizeSpeech($text, $language);
+
+        if (isset($result['error'])) {
+            $this->sendJsonResponse(['error' => $result['error']], 502);
+            return;
+        }
+
+        $this->sendJsonResponse([
+            'audioBase64' => base64_encode($result['audio']),
+            'contentType' => $result['contentType'],
+            'voice'       => $result['voice'],
+            'locale'      => $result['locale'],
+        ]);
     }
 
     private function canUseVoiceApi(int $surveyId): bool

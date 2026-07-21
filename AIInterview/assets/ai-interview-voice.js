@@ -1,5 +1,5 @@
 /**
- * AI Interview — Voice widget (M1 + M1.5 + M2a + M2b live transcript)
+ * AI Interview — Voice widget (M1 + M1.5 + M2a + M2b + M2c TTS)
  * Welcome/mic check, speak or type answers, Allie asks questions on screen.
  */
 (function () {
@@ -39,7 +39,8 @@
             mandatoryHint: 'Please answer at least once before continuing.',
             reviewPrompt: 'Review your answer, edit if needed, then tap Send.',
             sendAnswer: 'Send answer',
-            livePreviewLabel: 'What you say will appear here live.'
+            livePreviewLabel: 'What you say will appear here live.',
+            allieSpeaking: 'Allie is speaking…'
         },
         pl: {
             preparing: 'Przygotowuję wywiad…',
@@ -74,7 +75,8 @@
             mandatoryHint: 'Odpowiedz przynajmniej raz, zanim przejdziesz dalej.',
             reviewPrompt: 'Sprawdź odpowiedź, popraw jeśli trzeba, potem kliknij Wyślij.',
             sendAnswer: 'Wyślij odpowiedź',
-            livePreviewLabel: 'To, co mówisz, pojawi się tutaj na żywo.'
+            livePreviewLabel: 'To, co mówisz, pojawi się tutaj na żywo.',
+            allieSpeaking: 'Allie mówi…'
         }
     };
 
@@ -97,6 +99,7 @@
         var sgqa = widget.dataset.sgqa;
         var chatUrl = widget.dataset.ajaxUrl;
         var transcribeUrl = widget.dataset.transcribeUrl;
+        var synthesizeUrl = widget.dataset.synthesizeUrl || '';
         var language = widget.dataset.language || 'en';
         var mandatory = widget.dataset.mandatory === '1';
         var surveyId = widget.dataset.surveyId || getSurveyIdFromPage();
@@ -104,6 +107,7 @@
         var maxTokens = parseInt(widget.dataset.maxTokens, 10) || 6000;
         var submitPromptEnabled = widget.dataset.submitPrompt === '1';
         var liveTranscriptEnabled = widget.dataset.liveTranscript === '1';
+        var aiSpeechEnabled = widget.dataset.aiSpeech === '1' && synthesizeUrl !== '';
 
         var welcomeEl = document.getElementById('ai-welcome-' + sgqa);
         var welcomeMeterEl = document.getElementById('ai-welcome-meter-' + sgqa);
@@ -167,9 +171,12 @@
         var inputMode = 'speak';
         var isRecording = false;
         var isReviewingSpeech = false;
+        var isSpeaking = false;
         var speechRecognition = null;
         var liveTranscriptFinal = '';
         var typeSendDefaultLabel = typeSendBtn ? typeSendBtn.textContent : '';
+        var ttsAudio = null;
+        var ttsObjectUrl = '';
 
         if (answerField && !answerField.value.trim()) {
             answerField.value = '[AI Interview in progress]';
@@ -324,7 +331,12 @@
             stopWelcomeMicCheck();
             showInterviewPanel();
             updateInputModeUI();
-            startInterviewChat();
+            var unlock = (window.AIInterviewAudio && window.AIInterviewAudio.unlockPlayback)
+                ? window.AIInterviewAudio.unlockPlayback()
+                : Promise.resolve();
+            unlock.then(function () {
+                startInterviewChat();
+            });
         }
 
         function startInterviewChat() {
@@ -339,11 +351,10 @@
                 tokensUsed += newTokens;
                 if (tokensUsedEl) tokensUsedEl.value = tokensUsed;
                 showAssistantMessage(reply);
-                setAvatar('speaking');
-                setTurnStatus();
-                if (finishBtn) finishBtn.style.display = 'inline-block';
-                refreshControls();
-                checkTokenBudget();
+                afterAssistantReply(reply).then(function () {
+                    if (finishBtn) finishBtn.style.display = 'inline-block';
+                    checkTokenBudget();
+                });
             }, function (errMsg) {
                 chatLoading = false;
                 showError(errMsg);
@@ -352,7 +363,7 @@
         }
 
         function setInputMode(mode) {
-            if (finished || chatLoading || isRecording || isReviewingSpeech) return;
+            if (finished || chatLoading || isRecording || isReviewingSpeech || isSpeaking) return;
             if (mode !== 'speak' && mode !== 'type') return;
             inputMode = mode;
             updateInputModeUI();
@@ -412,7 +423,7 @@
         }
 
         function refreshControls() {
-            var canInteract = !finished && !chatLoading;
+            var canInteract = !finished && !chatLoading && !isSpeaking;
             updateInputModeUI();
 
             if (speakBtn) {
@@ -500,21 +511,117 @@
                 tokensUsed += newTokens;
                 if (tokensUsedEl) tokensUsedEl.value = tokensUsed;
                 showAssistantMessage(reply);
-                setAvatar('speaking');
-                if (inputMode === 'type') {
-                    setStatus(t(language, 'yourTurnType'));
-                    if (typeInputEl) typeInputEl.focus();
-                } else {
-                    setStatus(t(language, 'yourTurn'));
-                }
-                if (finishBtn) finishBtn.style.display = 'inline-block';
-                refreshControls();
-                checkTokenBudget();
+                afterAssistantReply(reply).then(function () {
+                    checkTokenBudget();
+                });
             }, function (errMsg) {
                 chatLoading = false;
                 showError(errMsg);
                 refreshControls();
                 setAvatar('speaking');
+            });
+        }
+
+        function cleanupTtsObjectUrl() {
+            if (ttsObjectUrl) {
+                URL.revokeObjectURL(ttsObjectUrl);
+                ttsObjectUrl = '';
+            }
+        }
+
+        function stopAssistantSpeech() {
+            if (ttsAudio) {
+                ttsAudio.pause();
+                ttsAudio.onended = null;
+                ttsAudio.onerror = null;
+                ttsAudio.removeAttribute('src');
+                try { ttsAudio.load(); } catch (e) { /* ignore */ }
+            }
+            cleanupTtsObjectUrl();
+            isSpeaking = false;
+        }
+
+        function playTtsBlob(blob) {
+            return new Promise(function (resolve) {
+                stopAssistantSpeech();
+                if (!ttsAudio) ttsAudio = new Audio();
+                ttsObjectUrl = URL.createObjectURL(blob);
+                ttsAudio.src = ttsObjectUrl;
+                isSpeaking = true;
+                refreshControls();
+                ttsAudio.onended = function () {
+                    cleanupTtsObjectUrl();
+                    isSpeaking = false;
+                    resolve();
+                };
+                ttsAudio.onerror = function () {
+                    cleanupTtsObjectUrl();
+                    isSpeaking = false;
+                    resolve();
+                };
+                var playPromise = ttsAudio.play();
+                if (playPromise && typeof playPromise.catch === 'function') {
+                    playPromise.catch(function () {
+                        cleanupTtsObjectUrl();
+                        isSpeaking = false;
+                        resolve();
+                    });
+                }
+            });
+        }
+
+        function playAssistantSpeechIfEnabled(text) {
+            if (!aiSpeechEnabled || !text.trim()) {
+                return Promise.resolve();
+            }
+
+            setAvatar('listening');
+            setStatus(t(language, 'allieSpeaking'));
+
+            var form = new FormData();
+            form.append('text', text);
+            form.append('language', language.slice(0, 2));
+            form.append('surveyId', surveyId);
+            var csrf = getCsrfToken();
+            if (csrf) form.append('YII_CSRF_TOKEN', csrf);
+
+            return fetch(synthesizeUrl, {
+                method: 'POST',
+                body: form,
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            }).then(function (response) {
+                return response.text().then(function (raw) {
+                    var data;
+                    try {
+                        data = JSON.parse(raw);
+                    } catch (e) {
+                        throw new Error(t(language, 'errorGeneric'));
+                    }
+                    if (!response.ok || data.error) {
+                        throw new Error(data.error || t(language, 'errorGeneric'));
+                    }
+                    return data;
+                });
+            }).then(function (data) {
+                var binary = atob(data.audioBase64 || '');
+                var bytes = new Uint8Array(binary.length);
+                for (var i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+                var blob = new Blob([bytes], { type: data.contentType || 'audio/mpeg' });
+                return playTtsBlob(blob);
+            }).catch(function () {
+                isSpeaking = false;
+                return Promise.resolve();
+            });
+        }
+
+        function afterAssistantReply(text) {
+            return playAssistantSpeechIfEnabled(text).then(function () {
+                setAvatar('speaking');
+                setTurnStatus();
+                refreshControls();
             });
         }
 
@@ -623,7 +730,10 @@
         }
 
         function startRecording() {
-            if (finished || chatLoading || !navigator.mediaDevices) return;
+            if (finished || chatLoading || isSpeaking || !navigator.mediaDevices) return;
+
+            stopAssistantSpeech();
+            refreshControls();
 
             navigator.mediaDevices.getUserMedia({ audio: true })
                 .then(function (stream) {
@@ -815,6 +925,7 @@
             isRecording = false;
             isReviewingSpeech = false;
             stopLiveTranscript();
+            stopAssistantSpeech();
             refreshControls();
             if (typeInputEl) typeInputEl.disabled = true;
             if (finishBtn) finishBtn.style.display = 'none';
@@ -873,6 +984,7 @@
             isRecording = false;
             isReviewingSpeech = false;
             stopLiveTranscript();
+            stopAssistantSpeech();
             stopWelcomeMicCheck();
             answerField.value = '[Interview skipped — AI service unavailable]';
             refreshControls();

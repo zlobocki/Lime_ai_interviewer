@@ -1,10 +1,11 @@
 <?php
 /**
- * Azure Speech-to-Text client (EU regions).
+ * Azure Speech client (EU regions) — STT and TTS.
  *
- * Uses the short-audio REST API. Audio is sent once and not stored by this class.
+ * Uses REST APIs. Audio is not stored by this class.
  *
  * @see https://learn.microsoft.com/en-us/azure/ai-services/speech-service/rest-speech-to-text-short
+ * @see https://learn.microsoft.com/en-us/azure/ai-services/speech-service/rest-text-to-speech
  */
 class AzureSpeechClient
 {
@@ -129,6 +130,102 @@ class AzureSpeechClient
         }
 
         return $result;
+    }
+
+    /**
+     * Synthesize speech from plain text (neural voice, MP3 output).
+     *
+     * @return array{ audio: string, contentType: string, voice: string, locale: string }|array{ error: string }
+     */
+    public function synthesizeSpeech(string $text, string $language): array
+    {
+        if ($this->apiKey === '' || $this->region === '') {
+            return ['error' => 'Azure Speech is not configured.'];
+        }
+
+        $text = trim(preg_replace('/\s+/u', ' ', strip_tags($text)));
+        if ($text === '') {
+            return ['error' => 'Empty text for speech synthesis.'];
+        }
+
+        if (mb_strlen($text) > 4000) {
+            $text = mb_substr($text, 0, 3997) . '…';
+        }
+
+        $locale = self::localeFromLanguage($language);
+        $voice  = self::voiceNameFromLanguage($language);
+        $ssml   = $this->buildSsml($text, $locale, $voice);
+
+        $url = sprintf('https://%s.tts.speech.microsoft.com/cognitiveservices/v1', $this->region);
+
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['error' => 'cURL initialisation failed'];
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $ssml,
+            CURLOPT_TIMEOUT        => 60,
+            CURLOPT_CONNECTTIMEOUT => 15,
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/ssml+xml',
+                'X-Microsoft-OutputFormat: audio-16khz-128kbitrate-mono-mp3',
+                'Ocp-Apim-Subscription-Key: ' . $this->apiKey,
+                'User-Agent: LimeSurvey-AIInterview/1.18',
+            ],
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ]);
+
+        $response  = curl_exec($ch);
+        $httpCode  = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlError !== '') {
+            return ['error' => 'Network error contacting Azure Speech TTS: ' . $curlError];
+        }
+
+        if ($response === false || $response === '') {
+            return ['error' => 'Empty response from Azure Speech TTS'];
+        }
+
+        if ($httpCode < 200 || $httpCode >= 300) {
+            $snippet = trim(substr((string) $response, 0, 200));
+            return ['error' => 'Azure Speech TTS failed (HTTP ' . $httpCode . '): ' . $snippet];
+        }
+
+        return [
+            'audio'       => $response,
+            'contentType' => 'audio/mpeg',
+            'voice'       => $voice,
+            'locale'      => $locale,
+        ];
+    }
+
+    /**
+     * Neural voice name for Allie read-aloud (EN + PL pilot).
+     */
+    public static function voiceNameFromLanguage(string $language): string
+    {
+        if (self::localeFromLanguage($language) === 'pl-PL') {
+            return 'pl-PL-ZofiaNeural';
+        }
+
+        return 'en-GB-SoniaNeural';
+    }
+
+    private function buildSsml(string $text, string $locale, string $voice): string
+    {
+        $escaped = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+
+        return '<?xml version="1.0" encoding="UTF-8"?>'
+            . '<speak version="1.0" xml:lang="' . $this->sanitizeLocale($locale) . '">'
+            . '<voice name="' . preg_replace('/[^a-zA-Z0-9\-]/', '', $voice) . '">'
+            . $escaped
+            . '</voice></speak>';
     }
 
     /**
