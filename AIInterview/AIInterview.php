@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.15.2
+ * @version     1.16.0
  * @since       LimeSurvey 6.0
  */
 
@@ -931,6 +931,11 @@ HTML;
         $eWelcomeMicHint = htmlspecialchars($labels['welcomeMicHint'], ENT_QUOTES, 'UTF-8');
         $eWelcomeContinue = htmlspecialchars($labels['welcomeContinue'], ENT_QUOTES, 'UTF-8');
         $eTranscriptShow = htmlspecialchars($labels['transcriptShow'], ENT_QUOTES, 'UTF-8');
+        $eInputModeSpeak = htmlspecialchars($labels['inputModeSpeak'], ENT_QUOTES, 'UTF-8');
+        $eInputModeType  = htmlspecialchars($labels['inputModeType'], ENT_QUOTES, 'UTF-8');
+        $eTypePlaceholder = htmlspecialchars($labels['typePlaceholder'], ENT_QUOTES, 'UTF-8');
+        $eSend           = htmlspecialchars($labels['send'], ENT_QUOTES, 'UTF-8');
+        $eInputModeLabel = htmlspecialchars($labels['inputModeLabel'], ENT_QUOTES, 'UTF-8');
 
         return <<<HTML
 <div class="ai-interview-widget ai-interview-voice-widget"
@@ -1053,28 +1058,87 @@ HTML;
         {$eTokenWarning}
     </div>
 
-    <div class="ai-voice-controls">
-        <button type="button"
-                class="ai-btn ai-btn-primary ai-btn-speak"
-                id="ai-speak-{$eSgqa}"
-                data-sgqa="{$eSgqa}"
-                disabled>
-            {$eStartSpeak}
-        </button>
-        <button type="button"
-                class="ai-btn ai-btn-secondary ai-btn-stop-speak"
-                id="ai-stop-speak-{$eSgqa}"
-                data-sgqa="{$eSgqa}"
-                disabled>
-            {$eDoneSpeak}
-        </button>
-        <button type="button"
-                class="ai-btn ai-btn-finish ai-btn-finish-interview"
-                id="ai-finish-{$eSgqa}"
-                data-sgqa="{$eSgqa}"
-                style="display:none;">
-            {$eFinish}
-        </button>
+    <div class="ai-voice-response-area" id="ai-response-area-{$eSgqa}">
+        <div class="ai-voice-input-mode"
+             role="tablist"
+             aria-label="{$eInputModeLabel}">
+            <button type="button"
+                    class="ai-voice-mode-btn is-active"
+                    id="ai-mode-speak-{$eSgqa}"
+                    role="tab"
+                    aria-selected="true"
+                    aria-controls="ai-speak-area-{$eSgqa}"
+                    data-mode="speak">
+                {$eInputModeSpeak}
+            </button>
+            <button type="button"
+                    class="ai-voice-mode-btn"
+                    id="ai-mode-type-{$eSgqa}"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="ai-type-area-{$eSgqa}"
+                    data-mode="type">
+                {$eInputModeType}
+            </button>
+        </div>
+
+        <div class="ai-voice-speak-area"
+             id="ai-speak-area-{$eSgqa}"
+             role="tabpanel"
+             aria-labelledby="ai-mode-speak-{$eSgqa}">
+            <div class="ai-voice-controls">
+                <button type="button"
+                        class="ai-btn ai-btn-primary ai-btn-speak"
+                        id="ai-speak-{$eSgqa}"
+                        data-sgqa="{$eSgqa}"
+                        disabled>
+                    {$eStartSpeak}
+                </button>
+                <button type="button"
+                        class="ai-btn ai-btn-secondary ai-btn-stop-speak"
+                        id="ai-stop-speak-{$eSgqa}"
+                        data-sgqa="{$eSgqa}"
+                        disabled>
+                    {$eDoneSpeak}
+                </button>
+            </div>
+        </div>
+
+        <div class="ai-voice-type-area is-hidden"
+             id="ai-type-area-{$eSgqa}"
+             role="tabpanel"
+             aria-labelledby="ai-mode-type-{$eSgqa}"
+             hidden>
+            <div class="ai-interview-input-area ai-voice-type-input">
+                <textarea
+                    class="ai-interview-input"
+                    id="ai-voice-input-{$eSgqa}"
+                    placeholder="{$eTypePlaceholder}"
+                    rows="3"
+                    aria-label="{$eTypePlaceholder}"
+                    disabled
+                ></textarea>
+                <div class="ai-interview-actions">
+                    <button type="button"
+                            class="ai-btn ai-btn-primary ai-btn-voice-send"
+                            id="ai-voice-send-{$eSgqa}"
+                            data-sgqa="{$eSgqa}"
+                            disabled>
+                        {$eSend}
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="ai-voice-finish-row">
+            <button type="button"
+                    class="ai-btn ai-btn-finish ai-btn-finish-interview"
+                    id="ai-finish-{$eSgqa}"
+                    data-sgqa="{$eSgqa}"
+                    style="display:none;">
+                {$eFinish}
+            </button>
+        </div>
     </div>
 
     </div><!-- /.ai-voice-interview-panel -->
@@ -1172,12 +1236,20 @@ HTML;
                 'submitModalEnd'   => 'Zakończ i wyślij ankietę',
                 'submitModalBack'  => 'Wróć do ankiety',
                 'welcomeTitle'     => 'Witaj — to wywiad głosowy z Allie',
-                'welcomeIntro'     => 'Allie zada kilka pytań. Odpowiadaj na głos — pytania zobaczysz na ekranie.',
+                'welcomeIntro'     => 'Allie zada kilka pytań. Odpowiadaj na głos lub przełącz na „Pisz”, aby wpisać odpowiedź.',
                 'welcomePrivacy'   => 'Twoje odpowiedzi są zapisywane w tej ankiecie. Mów wyraźnie w cichym miejscu.',
                 'welcomeMicHint'   => 'Zezwól na dostęp do mikrofonu i powiedz coś, aby sprawdzić poziom.',
                 'welcomeContinue'  => 'Rozpocznij wywiad',
                 'transcriptShow'   => 'Pokaż transkrypcję',
                 'transcriptHide'   => 'Ukryj transkrypcję',
+                'inputModeSpeak'   => 'Mów',
+                'inputModeType'    => 'Pisz',
+                'typePlaceholder'  => 'Wpisz swoją odpowiedź…',
+                'send'             => 'Wyślij',
+                'typePrompt'       => 'Wpisz odpowiedź i kliknij Wyślij.',
+                'yourTurnType'     => 'Twoja kolej — wpisz odpowiedź.',
+                'mandatoryHint'    => 'Odpowiedz przynajmniej raz, zanim przejdziesz dalej.',
+                'inputModeLabel'   => 'Sposób odpowiedzi',
             ];
         }
 
@@ -1194,12 +1266,20 @@ HTML;
             'submitModalEnd'   => 'End and submit survey',
             'submitModalBack'  => 'Go back to survey',
             'welcomeTitle'     => 'Welcome — voice interview with Allie',
-            'welcomeIntro'     => 'Allie will ask you a few questions. Speak your answers — questions appear on screen.',
+            'welcomeIntro'     => 'Allie will ask you a few questions. Speak your answers or switch to Type to write a response.',
             'welcomePrivacy'   => 'Your responses are saved in this survey. Please use a quiet space and speak clearly.',
             'welcomeMicHint'   => 'Allow microphone access, then say something to test the level meter.',
             'welcomeContinue'  => 'Continue to interview',
             'transcriptShow'   => 'Show transcript',
             'transcriptHide'   => 'Hide transcript',
+            'inputModeSpeak'   => 'Speak',
+            'inputModeType'    => 'Type',
+            'typePlaceholder'  => 'Type your response here…',
+            'send'             => 'Send',
+            'typePrompt'       => 'Type your answer and tap Send.',
+            'yourTurnType'     => 'Your turn — type your answer.',
+            'mandatoryHint'    => 'Please answer at least once before continuing.',
+            'inputModeLabel'   => 'Answer method',
         ];
     }
 

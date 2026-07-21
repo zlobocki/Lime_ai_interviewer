@@ -241,14 +241,92 @@ body .ai-interview-widget.ai-interview-voice-widget {
 }
 
 .ai-voice-controls {
-    padding: 14px 0 0;
+    padding: 12px 0 0;
     background: transparent;
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     justify-content: center;
     border: none;
+}
+
+.ai-voice-response-area {
+    padding-top: 14px;
     border-top: 1px solid var(--ai-hairline);
+}
+
+.ai-voice-input-mode {
+    display: flex;
+    gap: 0;
+    margin: 0 auto 12px;
+    max-width: 280px;
+    padding: 3px;
+    background: rgba(15, 23, 42, 0.06);
+    border-radius: var(--ai-radius-sm);
+}
+
+.ai-voice-mode-btn {
+    flex: 1;
+    padding: 8px 16px;
+    border: none;
+    border-radius: calc(var(--ai-radius-sm) - 3px);
+    background: transparent;
+    color: var(--ai-ink-muted);
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.ai-voice-mode-btn:hover:not(:disabled) {
+    color: var(--ai-ink);
+}
+
+.ai-voice-mode-btn.is-active {
+    background: #ffffff;
+    color: var(--ai-accent-hover);
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
+.ai-voice-mode-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.ai-voice-speak-area.is-hidden,
+.ai-voice-type-area.is-hidden {
+    display: none;
+}
+
+.ai-voice-type-area .ai-voice-type-input {
+    padding: 0;
+    border: none;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.ai-voice-type-area .ai-interview-input {
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.ai-voice-type-area .ai-interview-actions {
+    justify-content: stretch;
+}
+
+.ai-voice-type-area .ai-btn-voice-send {
+    width: 100%;
+}
+
+.ai-voice-finish-row {
+    display: flex;
+    justify-content: center;
+    padding-top: 10px;
+}
+
+.ai-voice-finish-row .ai-btn-finish {
+    min-width: 180px;
 }
 
 .ai-voice-controls .ai-btn {
@@ -354,6 +432,14 @@ body .ai-interview-widget.ai-interview-voice-widget {
     }
 
     .ai-voice-controls .ai-btn {
+        width: 100%;
+    }
+
+    .ai-voice-input-mode {
+        max-width: none;
+    }
+
+    .ai-voice-finish-row .ai-btn-finish {
         width: 100%;
     }
 }
