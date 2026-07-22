@@ -870,6 +870,7 @@
             var sid = surveyId ? parseInt(surveyId, 10) : 0;
             var payload = JSON.stringify({
                 surveyId: sid,
+                sgqa: sgqa,
                 messages: conversationHistory,
                 maxTokens: maxTokens,
                 language: language

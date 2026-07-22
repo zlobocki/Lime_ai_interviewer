@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.18.0
+ * @version     1.19.0
  * @since       LimeSurvey 6.0
  */
 
@@ -425,6 +425,22 @@ class AIInterview extends PluginBase
                     . 'Azure neural text-to-speech (EU). Question text is sent to Azure for audio generation.'
                 ),
                 'caption'  => gT('Read Questions Aloud'),
+            ],
+            'ai_interview_prior_context' => [
+                'types'    => 'T',
+                'category' => gT('AI Interview Settings'),
+                'sortorder'=> 8,
+                'inputtype'=> 'singleselect',
+                'options'  => [
+                    '0' => gT('No — ignore earlier survey answers'),
+                    '1' => gT('Yes — include earlier answers from this session'),
+                ],
+                'default'  => '1',
+                'help'     => gT(
+                    'When enabled, answers the respondent already gave to earlier questions '
+                    . 'in this survey (same session) are appended to the AI context as a summary table.'
+                ),
+                'caption'  => gT('Prior Survey Answers Context'),
             ],
         ];
 
@@ -1868,6 +1884,7 @@ HTML;
         $messages  = isset($body['messages'])  ? (array)  $body['messages']  : [];
         $maxTokens = isset($body['maxTokens']) ? (int)    $body['maxTokens'] : 6000;
         $language  = isset($body['language'])  ? (string) $body['language']  : 'en';
+        $sgqa      = isset($body['sgqa'])      ? (string) $body['sgqa']      : '';
 
         // Validate required fields
         if (empty($messages)) {
@@ -1910,6 +1927,8 @@ HTML;
             $this->sendJsonResponse(['error' => 'No valid messages provided'], 400);
             return;
         }
+
+        $this->injectPriorAnswersContext($sanitizedMessages, $surveyId, $sgqa, $language);
 
         // Inject language instruction into the system message
         $this->injectLanguageInstruction($sanitizedMessages, $language);
@@ -1973,6 +1992,203 @@ HTML;
 
         // No system message found â€” prepend one
         array_unshift($messages, ['role' => 'system', 'content' => $instruction]);
+    }
+
+    /**
+     * Append prior survey answers from the active session to the system prompt.
+     */
+    private function injectPriorAnswersContext(
+        array &$messages,
+        int $surveyId,
+        string $sgqa,
+        string $language
+    ): void {
+        if ($surveyId <= 0 || $sgqa === '') {
+            return;
+        }
+
+        $parsed = $this->parseSgqa($sgqa);
+        if ($parsed === null || (int) $parsed['sid'] !== $surveyId) {
+            return;
+        }
+
+        if ($this->getQuestionAttribute((int) $parsed['qid'], 'ai_interview_prior_context', '1') !== '1') {
+            return;
+        }
+
+        $block = $this->buildPriorAnswersContext($surveyId, $sgqa, $language);
+        if ($block === '') {
+            return;
+        }
+
+        foreach ($messages as &$msg) {
+            if ($msg['role'] === 'system') {
+                $msg['content'] .= "\n\n" . $block;
+                return;
+            }
+        }
+        unset($msg);
+
+        array_unshift($messages, ['role' => 'system', 'content' => $block]);
+    }
+
+    /**
+     * Build a markdown table of earlier answers from the current survey session.
+     */
+    private function buildPriorAnswersContext(int $surveyId, string $excludeSgqa, string $language): string
+    {
+        $sessionKey = 'survey_' . $surveyId;
+        if (!isset($_SESSION[$sessionKey]) || !is_array($_SESSION[$sessionKey])) {
+            return '';
+        }
+
+        $session = $_SESSION[$sessionKey];
+        $lang    = $this->resolveSurveyLanguage($surveyId, $language);
+        $rows    = [];
+
+        $questions = Question::model()->findAll([
+            'condition' => 'sid = :sid AND parent_qid = 0',
+            'params'    => [':sid' => $surveyId],
+            'order'     => 'gid ASC, question_order ASC',
+        ]);
+
+        foreach ($questions as $question) {
+            $sgqa = $surveyId . 'X' . $question->gid . 'X' . $question->qid;
+            if ($sgqa === $excludeSgqa) {
+                break;
+            }
+
+            if (!isset($session[$sgqa])) {
+                continue;
+            }
+
+            $answer = $this->normalizePriorAnswer((string) $session[$sgqa]);
+            if ($answer === '') {
+                continue;
+            }
+
+            $rows[] = [
+                'question' => $this->getQuestionPlainText((int) $question->qid, $lang),
+                'answer'   => $this->truncatePriorAnswer($answer),
+            ];
+        }
+
+        if ($rows === []) {
+            return '';
+        }
+
+        $intro = "These are the respondent's answers to previous questions in this survey session. "
+            . "Use them as background context where helpful. Focus your interview on your assigned topic; "
+            . "do not simply repeat questions they have already answered unless you are probing deeper.";
+
+        $lines = [
+            $intro,
+            '',
+            '| Question | Answer |',
+            '| --- | --- |',
+        ];
+
+        foreach ($rows as $row) {
+            $lines[] = '| ' . $this->escapeMarkdownTableCell($row['question'])
+                . ' | ' . $this->escapeMarkdownTableCell($row['answer']) . ' |';
+        }
+
+        $block = implode("\n", $lines);
+
+        if (mb_strlen($block) > 12000) {
+            $block = mb_substr($block, 0, 11997) . '…';
+        }
+
+        return $block;
+    }
+
+    /**
+     * @return array{sid: int, gid: int, qid: int}|null
+     */
+    private function parseSgqa(string $sgqa): ?array
+    {
+        if (!preg_match('/^(\d+)X(\d+)X(\d+)$/', $sgqa, $matches)) {
+            return null;
+        }
+
+        return [
+            'sid' => (int) $matches[1],
+            'gid' => (int) $matches[2],
+            'qid' => (int) $matches[3],
+        ];
+    }
+
+    private function getQuestionPlainText(int $questionId, string $language): string
+    {
+        $text = '';
+
+        if (class_exists('QuestionL10n')) {
+            $l10n = QuestionL10n::model()->findByAttributes([
+                'qid'      => $questionId,
+                'language' => $language,
+            ]);
+            if ($l10n === null) {
+                $l10n = QuestionL10n::model()->findByAttributes(['qid' => $questionId]);
+            }
+            if ($l10n !== null && !empty($l10n->question)) {
+                $text = (string) $l10n->question;
+            }
+        }
+
+        if ($text === '') {
+            $text = 'Question ' . $questionId;
+        }
+
+        $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace('/\s+/u', ' ', trim($text));
+
+        return mb_substr($text, 0, 500);
+    }
+
+    private function resolveSurveyLanguage(int $surveyId, string $language): string
+    {
+        $lang = preg_replace('/[^a-zA-Z\-]/', '', $language);
+        if ($lang !== '') {
+            return $lang;
+        }
+
+        return $this->getSessionLanguage($surveyId);
+    }
+
+    private function normalizePriorAnswer(string $answer): string
+    {
+        $answer = html_entity_decode(strip_tags($answer), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $answer = trim(preg_replace('/\s+/u', ' ', $answer));
+
+        if ($answer === '') {
+            return '';
+        }
+
+        $ignored = [
+            '[AI Interview in progress]',
+            '[Interview skipped — AI service unavailable]',
+            '[Interview skipped - AI service unavailable]',
+        ];
+
+        if (in_array($answer, $ignored, true)) {
+            return '';
+        }
+
+        return $answer;
+    }
+
+    private function truncatePriorAnswer(string $answer): string
+    {
+        if (mb_strlen($answer) <= 1500) {
+            return $answer;
+        }
+
+        return mb_substr($answer, 0, 1497) . '…';
+    }
+
+    private function escapeMarkdownTableCell(string $text): string
+    {
+        return str_replace('|', '\\|', $text);
     }
 
     /**

@@ -34,7 +34,7 @@
 
     function initWidget(widget) {
         // The widget uses the SGQA code (name) as the primary identifier
-        var sgqa       = widget.dataset.sgqa;
+        var sgqa       = widget.dataset.sgqa || '';
         var ajaxUrl    = widget.dataset.ajaxUrl;
         var language   = widget.dataset.language || 'en';
         var mandatory  = widget.dataset.mandatory === '1';
@@ -271,6 +271,7 @@
             var sid = surveyId ? parseInt(surveyId, 10) : 0;
             var jsonPayload = JSON.stringify({
                 surveyId:  sid,
+                sgqa:      sgqa,
                 messages:  conversationHistory,
                 maxTokens: maxTokens,
                 language:  language
