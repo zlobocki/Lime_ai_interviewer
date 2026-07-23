@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.19.0
+ * @version     1.20.0
  * @since       LimeSurvey 6.0
  */
 
@@ -344,8 +344,8 @@ class AIInterview extends PluginBase
                 'inputtype'=> 'integer',
                 'default'  => 6000,
                 'help'     => gT(
-                    'Maximum total tokens (prompt + all messages + AI replies) for this interview. '
-                    . 'When this budget is reached the interview ends automatically. Default: 6000.'
+                    'Token budget base for this interview (conversation length). '
+                    . 'The effective limit is 3× this value. When reached, the interview ends automatically. Default: 6000.'
                 ),
                 'caption'  => gT('Maximum Token Budget'),
             ],
@@ -1944,6 +1944,7 @@ HTML;
         $this->sendJsonResponse([
             'reply'        => $result['content'],
             'tokensUsed'   => $result['tokens_used'],
+            'budgetTokens' => $result['budget_tokens'],
             'finishReason' => $result['finish_reason'],
         ]);
     }
@@ -2046,6 +2047,113 @@ HTML;
         $lang    = $this->resolveSurveyLanguage($surveyId, $language);
         $rows    = [];
 
+        if (isset($session['fieldmap']) && is_array($session['fieldmap'])) {
+            $rows = $this->collectPriorAnswersFromFieldmap($session, $excludeSgqa, $lang);
+        }
+
+        if ($rows === []) {
+            $rows = $this->collectPriorAnswersFromQuestions($session, $surveyId, $excludeSgqa, $lang);
+        }
+
+        if ($rows === []) {
+            return '';
+        }
+
+        $intro = "These are the respondent's answers to previous questions in this survey session. "
+            . "When you refer to a prior answer, quote the Answer column EXACTLY — do not paraphrase, "
+            . "guess, or swap answers between questions. Use them as background context where helpful. "
+            . "Focus your interview on your assigned topic.";
+
+        $lines = [
+            $intro,
+            '',
+            '| # | Question | Answer |',
+            '| --- | --- | --- |',
+        ];
+
+        foreach ($rows as $index => $row) {
+            $num = $index + 1;
+            $lines[] = '| ' . $num
+                . ' | ' . $this->escapeMarkdownTableCell($row['question'])
+                . ' | ' . $this->escapeMarkdownTableCell($row['answer']) . ' |';
+        }
+
+        $block = implode("\n", $lines);
+
+        if (mb_strlen($block) > 12000) {
+            $block = mb_substr($block, 0, 11997) . '…';
+        }
+
+        return $block;
+    }
+
+    /**
+     * @return list<array{question: string, answer: string}>
+     */
+    private function collectPriorAnswersFromFieldmap(array $session, string $excludeSgqa, string $language): array
+    {
+        $fieldmap   = $session['fieldmap'];
+        $excludeQid = null;
+        $parsed     = $this->parseSgqa($excludeSgqa);
+
+        if ($parsed !== null) {
+            $excludeQid = (int) $parsed['qid'];
+        }
+
+        $rows = [];
+
+        foreach ($fieldmap as $fieldname => $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+
+            if ($fieldname === $excludeSgqa) {
+                break;
+            }
+
+            $qid = (int) ($field['qid'] ?? 0);
+            if ($excludeQid !== null && $qid === $excludeQid) {
+                break;
+            }
+
+            if ($this->shouldSkipFieldmapField($fieldname, $field)) {
+                continue;
+            }
+
+            if (!isset($session[$fieldname])) {
+                continue;
+            }
+
+            $rawAnswer = trim((string) $session[$fieldname]);
+            if ($rawAnswer === '' || $rawAnswer === '-oth-') {
+                continue;
+            }
+
+            $answer = $this->resolveSessionAnswer($field, $rawAnswer, $language);
+            $answer = $this->normalizePriorAnswer($answer);
+            if ($answer === '') {
+                continue;
+            }
+
+            $rows[] = [
+                'question' => $this->getFieldmapQuestionText($field, $language, $qid),
+                'answer'   => $this->truncatePriorAnswer($answer),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return list<array{question: string, answer: string}>
+     */
+    private function collectPriorAnswersFromQuestions(
+        array $session,
+        int $surveyId,
+        string $excludeSgqa,
+        string $language
+    ): array {
+        $rows      = [];
         $questions = Question::model()->findAll([
             'condition' => 'sid = :sid AND parent_qid = 0',
             'params'    => [':sid' => $surveyId],
@@ -2062,44 +2170,146 @@ HTML;
                 continue;
             }
 
-            $answer = $this->normalizePriorAnswer((string) $session[$sgqa]);
+            $rawAnswer = trim((string) $session[$sgqa]);
+            $answer    = $this->resolveSessionAnswer(
+                ['qid' => (int) $question->qid, 'type' => (string) $question->type],
+                $rawAnswer,
+                $language
+            );
+            $answer = $this->normalizePriorAnswer($answer);
             if ($answer === '') {
                 continue;
             }
 
             $rows[] = [
-                'question' => $this->getQuestionPlainText((int) $question->qid, $lang),
+                'question' => $this->getQuestionPlainText((int) $question->qid, $language),
                 'answer'   => $this->truncatePriorAnswer($answer),
             ];
         }
 
-        if ($rows === []) {
+        return $rows;
+    }
+
+    private function shouldSkipFieldmapField(string $fieldname, array $field): bool
+    {
+        if (strpos($fieldname, '_filecount') !== false) {
+            return true;
+        }
+
+        $type = (string) ($field['type'] ?? '');
+        if ($type === '*' || $type === 'X') {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function getFieldmapQuestionText(array $field, string $language, int $qid): string
+    {
+        $parts = [];
+
+        if (!empty($field['subquestion'])) {
+            $text = $this->cleanPlainText((string) $field['subquestion']);
+            if ($text !== '') {
+                $parts[] = $text;
+            }
+        } elseif (!empty($field['question'])) {
+            $text = $this->cleanPlainText((string) $field['question']);
+            if ($text !== '') {
+                $parts[] = $text;
+            }
+        }
+
+        if ($parts === [] && $qid > 0) {
+            $parts[] = $this->getQuestionPlainText($qid, $language);
+        }
+
+        return mb_substr(implode(': ', $parts), 0, 500);
+    }
+
+    private function resolveSessionAnswer(array $field, string $rawValue, string $language): string
+    {
+        $rawValue = trim($rawValue);
+        if ($rawValue === '') {
             return '';
         }
 
-        $intro = "These are the respondent's answers to previous questions in this survey session. "
-            . "Use them as background context where helpful. Focus your interview on your assigned topic; "
-            . "do not simply repeat questions they have already answered unless you are probing deeper.";
+        $qid  = (int) ($field['qid'] ?? 0);
+        $type = (string) ($field['type'] ?? '');
 
-        $lines = [
-            $intro,
-            '',
-            '| Question | Answer |',
-            '| --- | --- |',
+        if ($qid > 0 && $this->isChoiceQuestionType($type)) {
+            $label = $this->lookupAnswerLabel($qid, $rawValue, $language, $field);
+            if ($label !== '') {
+                return $label;
+            }
+        }
+
+        return $this->cleanPlainText($rawValue);
+    }
+
+    private function isChoiceQuestionType(string $type): bool
+    {
+        static $choiceTypes = [
+            'L', 'O', 'M', 'P', '!', 'F', 'H', '1', '5', 'A', 'B', 'C', 'E', 'K', 'Q', 'R', 'Y', 'G',
         ];
 
-        foreach ($rows as $row) {
-            $lines[] = '| ' . $this->escapeMarkdownTableCell($row['question'])
-                . ' | ' . $this->escapeMarkdownTableCell($row['answer']) . ' |';
+        return in_array($type, $choiceTypes, true);
+    }
+
+    private function lookupAnswerLabel(int $qid, string $code, string $language, array $field = []): string
+    {
+        if (!class_exists('Answer')) {
+            return '';
         }
 
-        $block = implode("\n", $lines);
+        $scaleId = isset($field['scale_id']) ? (int) $field['scale_id'] : null;
+        $answer  = $this->findAnswerRecord($qid, $code, $scaleId);
 
-        if (mb_strlen($block) > 12000) {
-            $block = mb_substr($block, 0, 11997) . '…';
+        if ($answer === null && strpos($code, '~') !== false) {
+            [$scalePart, $codePart] = explode('~', $code, 2);
+            $answer = $this->findAnswerRecord($qid, $codePart, (int) $scalePart);
         }
 
-        return $block;
+        if ($answer === null) {
+            return '';
+        }
+
+        if (class_exists('AnswerL10n')) {
+            $l10n = AnswerL10n::model()->findByAttributes([
+                'aid'      => $answer->aid,
+                'language' => $language,
+            ]);
+            if ($l10n === null) {
+                $l10n = AnswerL10n::model()->findByAttributes(['aid' => $answer->aid]);
+            }
+            if ($l10n !== null && !empty($l10n->answer)) {
+                return $this->cleanPlainText((string) $l10n->answer);
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @return Answer|null
+     */
+    private function findAnswerRecord(int $qid, string $code, ?int $scaleId)
+    {
+        $criteria = new CDbCriteria();
+        $criteria->compare('qid', $qid);
+        $criteria->compare('code', $code);
+        if ($scaleId !== null) {
+            $criteria->compare('scale_id', $scaleId);
+        }
+
+        return Answer::model()->find($criteria);
+    }
+
+    private function cleanPlainText(string $text): string
+    {
+        $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        return trim(preg_replace('/\s+/u', ' ', $text));
     }
 
     /**
@@ -2267,10 +2477,16 @@ HTML;
             return ['error' => 'The AI returned an empty response. Please try again.'];
         }
 
+        $completionTokens = (int) ($data['usage']['completion_tokens'] ?? 0);
+        if ($completionTokens <= 0) {
+            $completionTokens = (int) ($data['usage']['total_tokens'] ?? 0);
+        }
+
         return [
-            'content'      => $data['choices'][0]['message']['content'],
-            'tokens_used'  => (int) ($data['usage']['total_tokens'] ?? 0),
-            'finish_reason'=> (string) ($data['choices'][0]['finish_reason'] ?? 'stop'),
+            'content'       => $data['choices'][0]['message']['content'],
+            'tokens_used'   => (int) ($data['usage']['total_tokens'] ?? 0),
+            'budget_tokens' => $completionTokens,
+            'finish_reason' => (string) ($data['choices'][0]['finish_reason'] ?? 'stop'),
         ];
     }
 

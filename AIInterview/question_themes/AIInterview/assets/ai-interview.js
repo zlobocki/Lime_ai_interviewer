@@ -44,6 +44,7 @@
         // These are injected by the plugin's beforeQuestionRender or by the Twig template
         var prompt     = widget.dataset.prompt || '';
         var maxTokens  = parseInt(widget.dataset.maxTokens, 10) || 6000;
+        var tokenBudgetLimit = maxTokens * 3;
 
         console.log('AIInterview: Initialising widget', {
             sgqa: sgqa,
@@ -299,7 +300,11 @@
                         if (data.error) {
                             onError(data.error);
                         } else {
-                            onSuccess(data.reply, data.tokensUsed || 0, data.finishReason || 'stop');
+                            onSuccess(
+                                data.reply,
+                                data.budgetTokens != null ? data.budgetTokens : (data.tokensUsed || 0),
+                                data.finishReason || 'stop'
+                            );
                         }
                     } catch (e) {
                         console.error('AIInterview: JSON parse error', e, xhr.responseText.substring(0, 500));
@@ -330,7 +335,7 @@
         }
 
         function checkTokenBudget() {
-            if (tokensUsed >= maxTokens) {
+            if (tokensUsed >= tokenBudgetLimit) {
                 // Auto-finish when token budget is exhausted
                 if (tokenWarnEl) tokenWarnEl.style.display = 'block';
                 finishInterview(true);

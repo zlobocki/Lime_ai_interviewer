@@ -105,6 +105,7 @@
         var surveyId = widget.dataset.surveyId || getSurveyIdFromPage();
         var prompt = widget.dataset.prompt || '';
         var maxTokens = parseInt(widget.dataset.maxTokens, 10) || 6000;
+        var tokenBudgetLimit = maxTokens * 3;
         var submitPromptEnabled = widget.dataset.submitPrompt === '1';
         var liveTranscriptEnabled = widget.dataset.liveTranscript === '1';
         var aiSpeechEnabled = widget.dataset.aiSpeech === '1' && synthesizeUrl !== '';
@@ -544,28 +545,67 @@
         function playTtsBlob(blob) {
             return new Promise(function (resolve) {
                 stopAssistantSpeech();
-                if (!ttsAudio) ttsAudio = new Audio();
+                if (!ttsAudio) {
+                    ttsAudio = new Audio();
+                }
+                ttsAudio.preload = 'auto';
+
+                var settled = false;
+                function finish() {
+                    if (settled) return;
+                    settled = true;
+                    cleanupTtsObjectUrl();
+                    isSpeaking = false;
+                    resolve();
+                }
+
+                cleanupTtsObjectUrl();
                 ttsObjectUrl = URL.createObjectURL(blob);
                 ttsAudio.src = ttsObjectUrl;
                 isSpeaking = true;
                 refreshControls();
-                ttsAudio.onended = function () {
-                    cleanupTtsObjectUrl();
-                    isSpeaking = false;
-                    resolve();
-                };
-                ttsAudio.onerror = function () {
-                    cleanupTtsObjectUrl();
-                    isSpeaking = false;
-                    resolve();
-                };
-                var playPromise = ttsAudio.play();
-                if (playPromise && typeof playPromise.catch === 'function') {
-                    playPromise.catch(function () {
-                        cleanupTtsObjectUrl();
-                        isSpeaking = false;
-                        resolve();
-                    });
+
+                var playbackStarted = false;
+
+                function startPlayback() {
+                    if (settled || playbackStarted) return;
+                    playbackStarted = true;
+                    clearTimeout(playbackFallback);
+                    ttsAudio.currentTime = 0;
+                    var playPromise = ttsAudio.play();
+                    if (playPromise && typeof playPromise.catch === 'function') {
+                        playPromise.catch(finish);
+                    }
+                }
+
+                var playbackFallback = setTimeout(function () {
+                    if (!settled) {
+                        startPlayback();
+                    }
+                }, 3000);
+
+                function finishWithCleanup() {
+                    clearTimeout(playbackFallback);
+                    finish();
+                }
+
+                ttsAudio.onended = finishWithCleanup;
+                ttsAudio.onerror = finishWithCleanup;
+
+                if (typeof ttsAudio.canPlayType === 'function' && ttsAudio.canPlayType('audio/mpeg')) {
+                    ttsAudio.oncanplaythrough = function () {
+                        clearTimeout(playbackFallback);
+                        ttsAudio.oncanplaythrough = null;
+                        startPlayback();
+                    };
+                    ttsAudio.load();
+                } else {
+                    ttsAudio.onloadeddata = function () {
+                        clearTimeout(playbackFallback);
+                        ttsAudio.onloadeddata = null;
+                        startPlayback();
+                    };
+                    ttsAudio.load();
                 }
             });
         }
@@ -893,7 +933,10 @@
                         if (data.error) {
                             onError(data.error);
                         } else {
-                            onSuccess(data.reply, data.tokensUsed || 0);
+                            onSuccess(
+                                data.reply,
+                                data.budgetTokens != null ? data.budgetTokens : (data.tokensUsed || 0)
+                            );
                         }
                     } catch (e) {
                         onError(t(language, 'errorGeneric'));
@@ -913,7 +956,7 @@
         }
 
         function checkTokenBudget() {
-            if (tokensUsed >= maxTokens) {
+            if (tokensUsed >= tokenBudgetLimit) {
                 if (tokenWarnEl) tokenWarnEl.style.display = 'block';
                 finishInterview(true);
             }
