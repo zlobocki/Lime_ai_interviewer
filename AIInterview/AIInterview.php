@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.21.0
+ * @version     1.21.1
  * @since       LimeSurvey 6.0
  */
 
@@ -61,20 +61,30 @@ class AIInterview extends PluginBase
             'default' => 'westeurope',
         ],
         'azure_tts_voice_en' => [
-            'type'    => 'string',
+            'type'    => 'text',
             'label'   => 'Allie TTS Voice (English)',
             'help'    => 'Azure neural voice for English read-aloud (Allie). '
                 . 'Example: en-US-Nova:DragonHDLatestNeural. '
-                . 'Browse and preview voices at https://speech.microsoft.com/portal/voicegallery',
+                . 'Preview voices at https://speech.microsoft.com/portal/voicegallery',
             'default' => 'en-US-Nova:DragonHDLatestNeural',
+            'htmlOptions' => [
+                'rows' => 2,
+                'cols' => 60,
+                'style' => 'width: 100%; max-width: 36em; font-family: monospace;',
+            ],
         ],
         'azure_tts_voice_pl' => [
-            'type'    => 'string',
+            'type'    => 'text',
             'label'   => 'Allie TTS Voice (Polish)',
             'help'    => 'Azure neural voice for Polish read-aloud (Allie). '
                 . 'Example: pl-PL-ZofiaNeural. '
-                . 'Browse voices at https://speech.microsoft.com/portal/voicegallery',
+                . 'Preview voices at https://speech.microsoft.com/portal/voicegallery',
             'default' => 'pl-PL-ZofiaNeural',
+            'htmlOptions' => [
+                'rows' => 2,
+                'cols' => 60,
+                'style' => 'width: 100%; max-width: 36em; font-family: monospace;',
+            ],
         ],
     ];
 
@@ -456,7 +466,9 @@ class AIInterview extends PluginBase
                 'default'  => '0',
                 'help'     => gT(
                     'Voice mode only. When enabled, Allie reads each AI question aloud using '
-                    . 'Azure neural text-to-speech (EU). Question text is sent to Azure for audio generation.'
+                    . 'Azure neural text-to-speech (EU). Voice names are set under '
+                    . 'Configuration → Plugin Manager → AIInterview (global default), '
+                    . 'or per question using the Allie Voice override fields below.'
                 ),
                 'caption'  => gT('Read Questions Aloud'),
             ],
@@ -475,6 +487,32 @@ class AIInterview extends PluginBase
                     . 'in this survey (same session) are appended to the AI context as a summary table.'
                 ),
                 'caption'  => gT('Prior Survey Answers Context'),
+            ],
+            'ai_interview_tts_voice_en' => [
+                'types'    => 'T',
+                'category' => gT('AI Interview Settings'),
+                'sortorder'=> 10,
+                'inputtype'=> 'text',
+                'default'  => '',
+                'help'     => gT(
+                    'Optional. Azure voice name for English read-aloud on this question only. '
+                    . 'Leave empty to use the global default from Plugin Manager → AIInterview. '
+                    . 'Example: en-US-Nova:DragonHDLatestNeural'
+                ),
+                'caption'  => gT('Allie Voice — English (override)'),
+            ],
+            'ai_interview_tts_voice_pl' => [
+                'types'    => 'T',
+                'category' => gT('AI Interview Settings'),
+                'sortorder'=> 11,
+                'inputtype'=> 'text',
+                'default'  => '',
+                'help'     => gT(
+                    'Optional. Azure voice name for Polish read-aloud on this question only. '
+                    . 'Leave empty to use the global default from Plugin Manager → AIInterview. '
+                    . 'Example: pl-PL-ZofiaNeural'
+                ),
+                'caption'  => gT('Allie Voice — Polish (override)'),
             ],
         ];
 
@@ -1767,6 +1805,7 @@ HTML;
         $surveyId = isset($_POST['surveyId']) ? (int) $_POST['surveyId'] : 0;
         $language = isset($_POST['language']) ? (string) $_POST['language'] : 'en';
         $text     = isset($_POST['text']) ? (string) $_POST['text'] : '';
+        $sgqa     = isset($_POST['sgqa']) ? (string) $_POST['sgqa'] : '';
 
         if (!$this->canUseVoiceApi($surveyId)) {
             $this->sendJsonResponse(['error' => 'Unauthorized'], 403);
@@ -1789,7 +1828,8 @@ HTML;
         }
 
         $client = $this->createAzureSpeechClient();
-        $result = $client->synthesizeSpeech($text, $language);
+        $voice  = $this->resolveTtsVoice($sgqa, $language);
+        $result = $client->synthesizeSpeech($text, $language, $voice);
 
         if (isset($result['error'])) {
             $this->sendJsonResponse(['error' => $result['error']], 502);
@@ -1824,6 +1864,31 @@ HTML;
         $voicePl      = trim((string) $this->get('azure_tts_voice_pl', null, null, 'pl-PL-ZofiaNeural'));
 
         return new AzureSpeechClient($speechKey, $speechRegion, $voiceEn, $voicePl);
+    }
+
+    /**
+     * Resolve the Azure TTS voice for a question (per-question override or plugin default).
+     */
+    private function resolveTtsVoice(string $sgqa, string $language): string
+    {
+        $isPolish = AzureSpeechClient::localeFromLanguage($language) === 'pl-PL';
+        $fallback = $isPolish ? 'pl-PL-ZofiaNeural' : 'en-US-Nova:DragonHDLatestNeural';
+        $settingKey = $isPolish ? 'azure_tts_voice_pl' : 'azure_tts_voice_en';
+        $attrKey    = $isPolish ? 'ai_interview_tts_voice_pl' : 'ai_interview_tts_voice_en';
+
+        $voice = trim((string) $this->get($settingKey, null, null, $fallback));
+
+        if ($sgqa !== '') {
+            $parsed = $this->parseSgqa($sgqa);
+            if ($parsed !== null) {
+                $override = trim((string) $this->getQuestionAttribute((int) $parsed['qid'], $attrKey, ''));
+                if ($override !== '') {
+                    $voice = $override;
+                }
+            }
+        }
+
+        return $voice !== '' ? $voice : $fallback;
     }
 
     private function isPluginAdmin(): bool

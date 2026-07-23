@@ -149,7 +149,7 @@ class AzureSpeechClient
      *
      * @return array{ audio: string, contentType: string, voice: string, locale: string }|array{ error: string }
      */
-    public function synthesizeSpeech(string $text, string $language): array
+    public function synthesizeSpeech(string $text, string $language, string $voice = ''): array
     {
         if ($this->apiKey === '' || $this->region === '') {
             return ['error' => 'Azure Speech is not configured.'];
@@ -164,7 +164,9 @@ class AzureSpeechClient
             $text = mb_substr($text, 0, 3997) . '…';
         }
 
-        $voice  = $this->voiceForLanguage($language);
+        if ($voice === '') {
+            $voice = $this->voiceForLanguage($language);
+        }
         $locale = self::localeFromVoiceName($voice);
         $ssml   = $this->buildSsml($text, $locale, $voice);
 

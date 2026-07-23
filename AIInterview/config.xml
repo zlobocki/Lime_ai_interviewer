@@ -8,7 +8,7 @@
         <author>LimeSurvey AI Interview Plugin</author>
         <authorUrl>https://github.com/</authorUrl>
         <supportUrl>https://github.com/</supportUrl>
-        <version>1.12.4</version>
+        <version>1.21.1</version>
         <license>GPL v2</license>
         <description>
             <![CDATA[
@@ -41,15 +41,29 @@
             <name>azure_speech_key</name>
             <type>string</type>
             <label>Azure Speech API Key</label>
-            <help>Azure AI Speech resource key (EU region). Used for voice transcription. Never exposed to respondents.</help>
+            <help>Azure AI Speech resource key (EU region). Used for voice transcription and text-to-speech. Never exposed to respondents.</help>
             <default></default>
         </setting>
         <setting>
             <name>azure_speech_region</name>
             <type>string</type>
             <label>Azure Speech Region</label>
-            <help>EU region for speech processing, e.g. westeurope or polandcentral.</help>
+            <help>EU region for speech processing (transcription and TTS), e.g. westeurope or polandcentral.</help>
             <default>westeurope</default>
+        </setting>
+        <setting>
+            <name>azure_tts_voice_en</name>
+            <type>text</type>
+            <label>Allie TTS Voice (English)</label>
+            <help>Azure neural voice for English read-aloud. Example: en-US-Nova:DragonHDLatestNeural. Preview voices at https://speech.microsoft.com/portal/voicegallery</help>
+            <default>en-US-Nova:DragonHDLatestNeural</default>
+        </setting>
+        <setting>
+            <name>azure_tts_voice_pl</name>
+            <type>text</type>
+            <label>Allie TTS Voice (Polish)</label>
+            <help>Azure neural voice for Polish read-aloud. Example: pl-PL-ZofiaNeural. Preview voices at https://speech.microsoft.com/portal/voicegallery</help>
+            <default>pl-PL-ZofiaNeural</default>
         </setting>
     </settings>
 </config>

@@ -623,6 +623,7 @@
             form.append('text', text);
             form.append('language', language.slice(0, 2));
             form.append('surveyId', surveyId);
+            form.append('sgqa', sgqa);
             var csrf = getCsrfToken();
             if (csrf) form.append('YII_CSRF_TOKEN', csrf);
 
