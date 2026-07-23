@@ -15,10 +15,22 @@ class AzureSpeechClient
     /** @var string e.g. westeurope, polandcentral */
     private $region;
 
-    public function __construct(string $apiKey, string $region)
-    {
-        $this->apiKey = $apiKey;
-        $this->region = preg_replace('/[^a-z0-9]/', '', strtolower($region));
+    /** @var string Azure neural voice for English TTS */
+    private $voiceEn;
+
+    /** @var string Azure neural voice for Polish TTS */
+    private $voicePl;
+
+    public function __construct(
+        string $apiKey,
+        string $region,
+        string $voiceEn = '',
+        string $voicePl = ''
+    ) {
+        $this->apiKey   = $apiKey;
+        $this->region   = preg_replace('/[^a-z0-9]/', '', strtolower($region));
+        $this->voiceEn  = $voiceEn !== '' ? $voiceEn : 'en-US-Nova:DragonHDLatestNeural';
+        $this->voicePl  = $voicePl !== '' ? $voicePl : 'pl-PL-ZofiaNeural';
     }
 
     /**
@@ -67,7 +79,7 @@ class AzureSpeechClient
                 'Content-Type: ' . $contentType,
                 'Ocp-Apim-Subscription-Key: ' . $this->apiKey,
                 'Accept: application/json',
-                'User-Agent: LimeSurvey-AIInterview/1.12',
+                'User-Agent: LimeSurvey-AIInterview/1.21',
             ],
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
@@ -152,8 +164,8 @@ class AzureSpeechClient
             $text = mb_substr($text, 0, 3997) . '…';
         }
 
-        $locale = self::localeFromLanguage($language);
-        $voice  = self::voiceNameFromLanguage($language);
+        $voice  = $this->voiceForLanguage($language);
+        $locale = self::localeFromVoiceName($voice);
         $ssml   = $this->buildSsml($text, $locale, $voice);
 
         $url = sprintf('https://%s.tts.speech.microsoft.com/cognitiveservices/v1', $this->region);
@@ -173,7 +185,7 @@ class AzureSpeechClient
                 'Content-Type: application/ssml+xml',
                 'X-Microsoft-OutputFormat: audio-16khz-128kbitrate-mono-mp3',
                 'Ocp-Apim-Subscription-Key: ' . $this->apiKey,
-                'User-Agent: LimeSurvey-AIInterview/1.18',
+                'User-Agent: LimeSurvey-AIInterview/1.21',
             ],
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
@@ -205,31 +217,29 @@ class AzureSpeechClient
         ];
     }
 
-    /**
-     * Neural voice name for Allie read-aloud (EN + PL pilot).
-     */
-    public static function voiceNameFromLanguage(string $language): string
+    private function voiceForLanguage(string $language): string
     {
         if (self::localeFromLanguage($language) === 'pl-PL') {
-            return 'pl-PL-ZofiaNeural';
+            return $this->voicePl;
         }
 
-        return 'en-GB-SoniaNeural';
-    }
-
-    private function buildSsml(string $text, string $locale, string $voice): string
-    {
-        $escaped = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
-
-        return '<?xml version="1.0" encoding="UTF-8"?>'
-            . '<speak version="1.0" xml:lang="' . $this->sanitizeLocale($locale) . '">'
-            . '<voice name="' . preg_replace('/[^a-zA-Z0-9\-]/', '', $voice) . '">'
-            . $escaped
-            . '</voice></speak>';
+        return $this->voiceEn;
     }
 
     /**
-     * Map short language codes from the plugin to Azure locales.
+     * Derive BCP-47 locale from an Azure voice name (supports HD voices with colons).
+     */
+    public static function localeFromVoiceName(string $voice): string
+    {
+        if (preg_match('/^([a-z]{2}-[A-Z]{2})/', $voice, $matches)) {
+            return $matches[1];
+        }
+
+        return 'en-US';
+    }
+
+    /**
+     * Map short language codes from the plugin to Azure locales (STT).
      */
     public static function localeFromLanguage(string $language): string
     {
@@ -242,10 +252,22 @@ class AzureSpeechClient
         return 'en-GB';
     }
 
+    private function buildSsml(string $text, string $locale, string $voice): string
+    {
+        $escaped = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $safeVoice = preg_replace('/[^a-zA-Z0-9\-:]/', '', $voice);
+
+        return '<?xml version="1.0" encoding="UTF-8"?>'
+            . '<speak version="1.0" xml:lang="' . $this->sanitizeLocale($locale) . '">'
+            . '<voice name="' . $safeVoice . '">'
+            . $escaped
+            . '</voice></speak>';
+    }
+
     private function sanitizeLocale(string $locale): string
     {
         $locale = preg_replace('/[^a-zA-Z\-]/', '', $locale);
-        return $locale !== '' ? $locale : 'en-GB';
+        return $locale !== '' ? $locale : 'en-US';
     }
 
     /**

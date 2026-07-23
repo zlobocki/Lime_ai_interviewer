@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.20.0
+ * @version     1.21.0
  * @since       LimeSurvey 6.0
  */
 
@@ -59,6 +59,22 @@ class AIInterview extends PluginBase
             'label'   => 'Azure Speech Region',
             'help'    => 'EU region for speech processing (transcription and TTS), e.g. westeurope or polandcentral.',
             'default' => 'westeurope',
+        ],
+        'azure_tts_voice_en' => [
+            'type'    => 'string',
+            'label'   => 'Allie TTS Voice (English)',
+            'help'    => 'Azure neural voice for English read-aloud (Allie). '
+                . 'Example: en-US-Nova:DragonHDLatestNeural. '
+                . 'Browse and preview voices at https://speech.microsoft.com/portal/voicegallery',
+            'default' => 'en-US-Nova:DragonHDLatestNeural',
+        ],
+        'azure_tts_voice_pl' => [
+            'type'    => 'string',
+            'label'   => 'Allie TTS Voice (Polish)',
+            'help'    => 'Azure neural voice for Polish read-aloud (Allie). '
+                . 'Example: pl-PL-ZofiaNeural. '
+                . 'Browse voices at https://speech.microsoft.com/portal/voicegallery',
+            'default' => 'pl-PL-ZofiaNeural',
         ],
     ];
 
@@ -406,14 +422,32 @@ class AIInterview extends PluginBase
                 'default'  => '0',
                 'help'     => gT(
                     'Voice mode only. When enabled, a text box appears while the respondent speaks '
-                    . 'and fills with live dictation. After Done, they can review and edit before sending.'
+                    . 'and fills with live dictation. Does not require review before sending unless '
+                    . '"Review Transcript Before Sending" is also enabled.'
                 ),
                 'caption'  => gT('Live Transcript While Speaking'),
+            ],
+            'ai_interview_speech_review' => [
+                'types'    => 'T',
+                'category' => gT('AI Interview Settings'),
+                'sortorder'=> 7,
+                'inputtype'=> 'singleselect',
+                'options'  => [
+                    '0' => gT('No — send answer immediately after speaking'),
+                    '1' => gT('Yes — show transcribed text for review/edit before sending'),
+                ],
+                'default'  => '0',
+                'help'     => gT(
+                    'Voice mode only. When disabled, the respondent taps Done and the transcript is '
+                    . 'sent straight to Allie (speak → Done → Allie responds). When enabled, they can '
+                    . 'correct the transcription before sending.'
+                ),
+                'caption'  => gT('Review Transcript Before Sending'),
             ],
             'ai_interview_ai_speech' => [
                 'types'    => 'T',
                 'category' => gT('AI Interview Settings'),
-                'sortorder'=> 7,
+                'sortorder'=> 8,
                 'inputtype'=> 'singleselect',
                 'options'  => [
                     '0' => gT('No — questions shown as text only'),
@@ -429,7 +463,7 @@ class AIInterview extends PluginBase
             'ai_interview_prior_context' => [
                 'types'    => 'T',
                 'category' => gT('AI Interview Settings'),
-                'sortorder'=> 8,
+                'sortorder'=> 9,
                 'inputtype'=> 'singleselect',
                 'options'  => [
                     '0' => gT('No — ignore earlier survey answers'),
@@ -507,6 +541,7 @@ class AIInterview extends PluginBase
         $mode         = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mode', 'chat');
         $submitPrompt = (string) $this->getQuestionAttribute($questionId, 'ai_interview_submit_prompt', '0');
         $liveTranscript = (string) $this->getQuestionAttribute($questionId, 'ai_interview_live_transcript', '0');
+        $speechReview   = (string) $this->getQuestionAttribute($questionId, 'ai_interview_speech_review', '0');
         $aiSpeech       = (string) $this->getQuestionAttribute($questionId, 'ai_interview_ai_speech', '0');
         $isVoice      = ($mode !== 'chat');
 
@@ -554,6 +589,7 @@ class AIInterview extends PluginBase
                 $mandatory,
                 $submitPrompt,
                 $liveTranscript,
+                $speechReview,
                 $aiSpeech,
                 $dispVal
             );
@@ -668,6 +704,7 @@ class AIInterview extends PluginBase
         $mode         = (string) $this->getQuestionAttribute($questionId, 'ai_interview_mode', 'chat');
         $submitPrompt = (string) $this->getQuestionAttribute($questionId, 'ai_interview_submit_prompt', '0');
         $liveTranscript = (string) $this->getQuestionAttribute($questionId, 'ai_interview_live_transcript', '0');
+        $speechReview   = (string) $this->getQuestionAttribute($questionId, 'ai_interview_speech_review', '0');
         $aiSpeech       = (string) $this->getQuestionAttribute($questionId, 'ai_interview_ai_speech', '0');
         $isVoice      = ($mode !== 'chat');
 
@@ -706,6 +743,7 @@ class AIInterview extends PluginBase
                 $mandatory,
                 $submitPrompt,
                 $liveTranscript,
+                $speechReview,
                 $aiSpeech,
                 ''
             );
@@ -961,6 +999,7 @@ HTML;
         string $mandatory,
         string $submitPrompt,
         string $liveTranscript,
+        string $speechReview,
         string $aiSpeech,
         string $dispVal
     ): string {
@@ -975,6 +1014,7 @@ HTML;
         $eMandatory     = htmlspecialchars($mandatory, ENT_QUOTES, 'UTF-8');
         $eSubmitPrompt  = htmlspecialchars($submitPrompt, ENT_QUOTES, 'UTF-8');
         $eLiveTranscript = htmlspecialchars($liveTranscript, ENT_QUOTES, 'UTF-8');
+        $eSpeechReview  = htmlspecialchars($speechReview, ENT_QUOTES, 'UTF-8');
         $eAiSpeech      = htmlspecialchars($aiSpeech, ENT_QUOTES, 'UTF-8');
         $eDispVal       = htmlspecialchars($dispVal, ENT_QUOTES, 'UTF-8');
 
@@ -1024,6 +1064,7 @@ HTML;
      data-mandatory="{$eMandatory}"
      data-submit-prompt="{$eSubmitPrompt}"
      data-live-transcript="{$eLiveTranscript}"
+     data-speech-review="{$eSpeechReview}"
      data-avatar-idle="{$eAvatarIdle}"
      data-avatar-listening="{$eAvatarListening}"
      data-avatar-speaking="{$eAvatarSpeaking}"
@@ -1688,7 +1729,7 @@ HTML;
         @unlink($file['tmp_name']);
 
         $locale = AzureSpeechClient::localeFromLanguage($language);
-        $client = new AzureSpeechClient($speechKey, $speechRegion);
+        $client = $this->createAzureSpeechClient();
         $result = $client->recognizeOnce($audioBytes, $locale, $mimeType);
 
         if (isset($result['error'])) {
@@ -1747,7 +1788,7 @@ HTML;
             return;
         }
 
-        $client = new AzureSpeechClient($speechKey, $speechRegion);
+        $client = $this->createAzureSpeechClient();
         $result = $client->synthesizeSpeech($text, $language);
 
         if (isset($result['error'])) {
@@ -1770,6 +1811,19 @@ HTML;
         }
 
         return ($surveyId > 0 && isset($_SESSION['survey_' . $surveyId]));
+    }
+
+    /**
+     * Build an Azure Speech client using plugin settings (key, region, TTS voices).
+     */
+    private function createAzureSpeechClient(): AzureSpeechClient
+    {
+        $speechKey    = trim((string) $this->get('azure_speech_key', null, null, ''));
+        $speechRegion = trim((string) $this->get('azure_speech_region', null, null, 'westeurope'));
+        $voiceEn      = trim((string) $this->get('azure_tts_voice_en', null, null, 'en-US-Nova:DragonHDLatestNeural'));
+        $voicePl      = trim((string) $this->get('azure_tts_voice_pl', null, null, 'pl-PL-ZofiaNeural'));
+
+        return new AzureSpeechClient($speechKey, $speechRegion, $voiceEn, $voicePl);
     }
 
     private function isPluginAdmin(): bool

@@ -108,6 +108,7 @@
         var tokenBudgetLimit = maxTokens * 3;
         var submitPromptEnabled = widget.dataset.submitPrompt === '1';
         var liveTranscriptEnabled = widget.dataset.liveTranscript === '1';
+        var speechReviewEnabled = widget.dataset.speechReview === '1';
         var aiSpeechEnabled = widget.dataset.aiSpeech === '1' && synthesizeUrl !== '';
 
         var welcomeEl = document.getElementById('ai-welcome-' + sgqa);
@@ -860,7 +861,7 @@
                         return;
                     }
 
-                    if (liveTranscriptEnabled) {
+                    if (speechReviewEnabled) {
                         enterSpeechReview(text);
                         return;
                     }
