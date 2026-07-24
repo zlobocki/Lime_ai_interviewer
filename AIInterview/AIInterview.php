@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.21.2
+ * @version     1.21.3
  * @since       LimeSurvey 6.0
  */
 
@@ -63,8 +63,9 @@ class AIInterview extends PluginBase
         'azure_tts_voice_en' => [
             'type'    => 'text',
             'label'   => 'Allie TTS Voice (English)',
-            'help'    => 'Azure neural voice for English read-aloud (Allie). '
-                . 'Example: en-US-Nova:DragonHDLatestNeural. '
+                'help'    => 'Azure neural voice for English read-aloud (Allie). '
+                . 'Example: en-US-Nova:DragonHDLatestNeural (HD) or en-GB-SoniaNeural (standard). '
+                . 'HD voices automatically use 24/48 kHz output. '
                 . 'Preview voices at https://speech.microsoft.com/portal/voicegallery',
             'default' => 'en-US-Nova:DragonHDLatestNeural',
             'htmlOptions' => [
@@ -1876,10 +1877,11 @@ HTML;
         }
 
         $this->sendJsonResponse([
-            'audioBase64' => base64_encode($result['audio']),
-            'contentType' => $result['contentType'],
-            'voice'       => $result['voice'],
-            'locale'      => $result['locale'],
+            'audioBase64'  => base64_encode($result['audio']),
+            'contentType'  => $result['contentType'],
+            'voice'        => $result['voice'],
+            'locale'       => $result['locale'],
+            'outputFormat' => $result['outputFormat'] ?? '',
         ]);
     }
 

@@ -124,7 +124,6 @@ class AzureSpeechClient
 
         $durationMs = null;
         if (isset($data['Duration'])) {
-            // Azure returns duration in 100-nanosecond units
             $durationMs = (int) round(((int) $data['Duration']) / 10000);
         }
 
@@ -147,7 +146,7 @@ class AzureSpeechClient
     /**
      * Synthesize speech from plain text (neural voice, MP3 output).
      *
-     * @return array{ audio: string, contentType: string, voice: string, locale: string }|array{ error: string }
+     * @return array{ audio: string, contentType: string, voice: string, locale: string, outputFormat?: string }|array{ error: string, httpCode?: int, azureMessage?: string, voice?: string, outputFormat?: string }
      */
     public function synthesizeSpeech(string $text, string $language, string $voice = ''): array
     {
@@ -167,24 +166,22 @@ class AzureSpeechClient
         if ($voice === '') {
             $voice = $this->voiceForLanguage($language);
         }
-        $voice  = self::normalizeVoiceName($voice);
-        $locale = self::localeFromVoiceName($voice);
 
-        $result = $this->requestSynthesis($text, $locale, $voice);
-        if (!isset($result['error'])) {
-            return $result;
-        }
+        $voiceCandidates = self::voiceNameCandidates($voice);
+        $lastError       = ['error' => 'Azure Speech TTS failed for all voice/format attempts.'];
 
-        // Azure docs list HD voices with lowercase locale prefix (en-us-…); retry once.
-        $alternate = self::alternateVoiceLocaleCase($voice);
-        if ($alternate !== null && $alternate !== $voice) {
-            $retry = $this->requestSynthesis($text, self::localeFromVoiceName($alternate), $alternate);
-            if (!isset($retry['error'])) {
-                return $retry;
+        foreach ($voiceCandidates as $candidateVoice) {
+            foreach (self::outputFormatsForVoice($candidateVoice) as $outputFormat) {
+                $locale = self::localeFromVoiceName($candidateVoice);
+                $result = $this->requestSynthesisOnce($text, $locale, $candidateVoice, $outputFormat);
+                if (!isset($result['error'])) {
+                    return $result;
+                }
+                $lastError = $result;
             }
         }
 
-        return $result;
+        return $lastError;
     }
 
     /**
@@ -217,13 +214,55 @@ class AzureSpeechClient
     }
 
     /**
-     * @return array{ audio: string, contentType: string, voice: string, locale: string }|array{ error: string, httpCode?: int, azureMessage?: string }
+     * @return list<string>
      */
-    private function requestSynthesis(string $text, string $locale, string $voice): array
+    public static function voiceNameCandidates(string $voice): array
+    {
+        $normalized = self::normalizeVoiceName($voice);
+        $alternate  = self::alternateVoiceLocaleCase($normalized);
+        $candidates = [];
+
+        if ($normalized !== '') {
+            $candidates[] = $normalized;
+        }
+        if ($alternate !== null && $alternate !== $normalized) {
+            $candidates[] = $alternate;
+        }
+
+        return $candidates !== [] ? $candidates : [$voice];
+    }
+
+    public static function isHdVoice(string $voice): bool
+    {
+        return stripos($voice, ':DragonHD') !== false;
+    }
+
+    /**
+     * HD Dragon voices often fail silently at 16 kHz; prefer 24/48 kHz MP3.
+     *
+     * @return list<string>
+     */
+    public static function outputFormatsForVoice(string $voice): array
+    {
+        if (self::isHdVoice($voice)) {
+            return [
+                'audio-24khz-160kbitrate-mono-mp3',
+                'audio-48khz-192kbitrate-mono-mp3',
+                'audio-24khz-96kbitrate-mono-mp3',
+                'audio-16khz-128kbitrate-mono-mp3',
+            ];
+        }
+
+        return ['audio-16khz-128kbitrate-mono-mp3'];
+    }
+
+    /**
+     * @return array{ audio: string, contentType: string, voice: string, locale: string, outputFormat: string }|array{ error: string, httpCode?: int, azureMessage?: string, voice?: string, outputFormat?: string }
+     */
+    private function requestSynthesisOnce(string $text, string $locale, string $voice, string $outputFormat): array
     {
         $ssml = $this->buildSsml($text, $locale, $voice);
-
-        $url = sprintf('https://%s.tts.speech.microsoft.com/cognitiveservices/v1', $this->region);
+        $url  = sprintf('https://%s.tts.speech.microsoft.com/cognitiveservices/v1', $this->region);
 
         $ch = curl_init($url);
         if ($ch === false) {
@@ -234,11 +273,11 @@ class AzureSpeechClient
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,
             CURLOPT_POSTFIELDS     => $ssml,
-            CURLOPT_TIMEOUT        => 60,
+            CURLOPT_TIMEOUT        => 90,
             CURLOPT_CONNECTTIMEOUT => 15,
             CURLOPT_HTTPHEADER     => [
                 'Content-Type: application/ssml+xml',
-                'X-Microsoft-OutputFormat: audio-16khz-128kbitrate-mono-mp3',
+                'X-Microsoft-OutputFormat: ' . $outputFormat,
                 'Ocp-Apim-Subscription-Key: ' . $this->apiKey,
                 'User-Agent: LimeSurvey-AIInterview/1.21',
             ],
@@ -252,11 +291,21 @@ class AzureSpeechClient
         curl_close($ch);
 
         if ($curlError !== '') {
-            return ['error' => 'Network error contacting Azure Speech TTS: ' . $curlError];
+            return [
+                'error'        => 'Network error contacting Azure Speech TTS: ' . $curlError,
+                'httpCode'     => $httpCode,
+                'voice'        => $voice,
+                'outputFormat' => $outputFormat,
+            ];
         }
 
         if ($response === false || $response === '') {
-            return ['error' => 'Empty response from Azure Speech TTS'];
+            return [
+                'error'        => 'Empty response from Azure Speech TTS (HTTP ' . $httpCode . ')',
+                'httpCode'     => $httpCode,
+                'voice'        => $voice,
+                'outputFormat' => $outputFormat,
+            ];
         }
 
         if ($httpCode < 200 || $httpCode >= 300) {
@@ -265,14 +314,17 @@ class AzureSpeechClient
                 'error'        => 'Azure Speech TTS failed (HTTP ' . $httpCode . '): ' . $snippet,
                 'httpCode'     => $httpCode,
                 'azureMessage' => $snippet,
+                'voice'        => $voice,
+                'outputFormat' => $outputFormat,
             ];
         }
 
         return [
-            'audio'       => $response,
-            'contentType' => 'audio/mpeg',
-            'voice'       => $voice,
-            'locale'      => $locale,
+            'audio'        => $response,
+            'contentType'  => 'audio/mpeg',
+            'voice'        => $voice,
+            'locale'       => $locale,
+            'outputFormat' => $outputFormat,
         ];
     }
 
@@ -313,11 +365,12 @@ class AzureSpeechClient
 
     private function buildSsml(string $text, string $locale, string $voice): string
     {
-        $escaped = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $escaped   = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $safeVoice = preg_replace('/[^a-zA-Z0-9\-:]/', '', $voice);
 
         return '<?xml version="1.0" encoding="UTF-8"?>'
-            . '<speak version="1.0" xml:lang="' . $this->sanitizeLocale($locale) . '">'
+            . '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="'
+            . $this->sanitizeLocale($locale) . '">'
             . '<voice name="' . $safeVoice . '">'
             . $escaped
             . '</voice></speak>';

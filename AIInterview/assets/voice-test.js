@@ -375,6 +375,9 @@
                     if (data.voice) {
                         errLine += '\nVoice tried: ' + data.voice;
                     }
+                    if (data.outputFormat) {
+                        errLine += '\nOutput format tried: ' + data.outputFormat;
+                    }
                     if (ttsResultEl) ttsResultEl.textContent = errLine;
                     setStatus('TTS failed — see details below.', true);
                     return;
@@ -383,6 +386,9 @@
                 var info = 'OK — voice: ' + (data.voice || voice || '(default)');
                 if (data.locale) {
                     info += ', locale: ' + data.locale;
+                }
+                if (data.outputFormat) {
+                    info += ', format: ' + data.outputFormat;
                 }
                 if (ttsResultEl) ttsResultEl.textContent = info;
 
