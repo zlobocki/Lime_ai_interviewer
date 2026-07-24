@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.21.3
+ * @version     1.21.4
  * @since       LimeSurvey 6.0
  */
 
@@ -64,8 +64,8 @@ class AIInterview extends PluginBase
             'type'    => 'text',
             'label'   => 'Allie TTS Voice (English)',
                 'help'    => 'Azure neural voice for English read-aloud (Allie). '
-                . 'Example: en-US-Nova:DragonHDLatestNeural (HD) or en-GB-SoniaNeural (standard). '
-                . 'HD voices automatically use 24/48 kHz output. '
+                . 'Example: en-us-Nova:DragonHDLatestNeural (HD, needs S0 Speech tier) or en-GB-SoniaNeural (standard). '
+                . 'The voice test page checks whether the voice exists in your Azure region. '
                 . 'Preview voices at https://speech.microsoft.com/portal/voicegallery',
             'default' => 'en-US-Nova:DragonHDLatestNeural',
             'htmlOptions' => [
@@ -1637,16 +1637,32 @@ HTML;
 
         $speechKey    = trim((string) $this->get('azure_speech_key', null, null, ''));
         $speechRegion = trim((string) $this->get('azure_speech_region', null, null, 'westeurope'));
+        $voiceEn      = trim((string) $this->get('azure_tts_voice_en', null, null, 'en-US-Nova:DragonHDLatestNeural'));
+        $voicePl      = trim((string) $this->get('azure_tts_voice_pl', null, null, 'pl-PL-ZofiaNeural'));
 
-        $this->sendJsonResponse([
+        $payload = [
             'status'              => 'ok',
             'azure_speech_set'    => $speechKey !== '',
             'azure_speech_region' => $speechRegion ?: 'westeurope',
             'transcribe_url'      => $this->getPluginDirectUrl('voiceTranscribe'),
             'synthesize_url'      => $this->getPluginDirectUrl('voiceSynthesize'),
-            'voice_en'            => trim((string) $this->get('azure_tts_voice_en', null, null, 'en-US-Nova:DragonHDLatestNeural')),
-            'voice_pl'            => trim((string) $this->get('azure_tts_voice_pl', null, null, 'pl-PL-ZofiaNeural')),
-        ]);
+            'voice_en'            => $voiceEn,
+            'voice_pl'            => $voicePl,
+        ];
+
+        if ($speechKey !== '') {
+            $client = $this->createAzureSpeechClient();
+            $catalogVoice = $client->resolveCatalogVoiceName($voiceEn);
+            $payload['voice_en_catalog'] = $catalogVoice;
+            $payload['voice_en_available'] = $catalogVoice !== null;
+            if ($catalogVoice === null && AzureSpeechClient::isHdVoice($voiceEn)) {
+                $payload['voice_en_warning'] = 'Configured English HD voice is not in the Azure catalog for region '
+                    . ($speechRegion ?: 'westeurope')
+                    . '. Use a standard voice (e.g. en-GB-SoniaNeural) or an S0 Speech resource that supports HD voices.';
+            }
+        }
+
+        $this->sendJsonResponse($payload);
     }
 
     /**
@@ -1869,8 +1885,14 @@ HTML;
             if (isset($result['httpCode'])) {
                 $payload['httpCode'] = $result['httpCode'];
             }
+            if (isset($result['outputFormat'])) {
+                $payload['outputFormat'] = $result['outputFormat'];
+            }
             if ($this->isPluginAdmin() && isset($result['azureMessage'])) {
                 $payload['azureMessage'] = $result['azureMessage'];
+            }
+            if ($this->isPluginAdmin() && isset($result['attempts']) && is_array($result['attempts'])) {
+                $payload['attempts'] = $result['attempts'];
             }
             $this->sendJsonResponse($payload, 502);
             return;

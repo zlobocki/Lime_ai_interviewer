@@ -8,7 +8,7 @@
         <author>LimeSurvey AI Interview Plugin</author>
         <authorUrl>https://github.com/</authorUrl>
         <supportUrl>https://github.com/</supportUrl>
-        <version>1.21.3</version>
+        <version>1.21.4</version>
         <license>GPL v2</license>
         <description>
             <![CDATA[
@@ -55,7 +55,7 @@
             <name>azure_tts_voice_en</name>
             <type>text</type>
             <label>Allie TTS Voice (English)</label>
-            <help>Azure neural voice for English read-aloud. Example: en-US-Nova:DragonHDLatestNeural. Preview voices at https://speech.microsoft.com/portal/voicegallery</help>
+            <help>Azure neural voice for English read-aloud. Example: en-us-Nova:DragonHDLatestNeural (HD, S0 tier) or en-GB-SoniaNeural (standard). The voice test page checks regional availability.</help>
             <default>en-US-Nova:DragonHDLatestNeural</default>
         </setting>
         <setting>

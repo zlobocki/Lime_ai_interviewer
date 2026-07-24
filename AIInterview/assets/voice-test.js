@@ -199,7 +199,14 @@
                     if (data.voice_en) {
                         line += ' English voice: ' + data.voice_en + '.';
                     }
-                    setStatus(line, false);
+                    if (data.voice_en_catalog) {
+                        line += ' Catalog name: ' + data.voice_en_catalog + '.';
+                    }
+                    if (data.voice_en_available === false) {
+                        setStatus(line + ' WARNING: ' + (data.voice_en_warning || 'Voice not available in this region.'), true);
+                    } else {
+                        setStatus(line, false);
+                    }
                     if (ttsVoiceInput && !ttsVoiceInput.value && data.voice_en) {
                         ttsVoiceInput.value = data.voice_en;
                     }
@@ -377,6 +384,16 @@
                     }
                     if (data.outputFormat) {
                         errLine += '\nOutput format tried: ' + data.outputFormat;
+                    }
+                    if (data.attempts && data.attempts.length) {
+                        errLine += '\n\nAttempts (' + data.attempts.length + '):';
+                        data.attempts.forEach(function (attempt, index) {
+                            errLine += '\n  ' + (index + 1) + '. ' + (attempt.voice || '?')
+                                + ' / ' + (attempt.outputFormat || '?');
+                            if (attempt.httpCode) {
+                                errLine += ' → HTTP ' + attempt.httpCode;
+                            }
+                        });
                     }
                     if (ttsResultEl) ttsResultEl.textContent = errLine;
                     setStatus('TTS failed — see details below.', true);

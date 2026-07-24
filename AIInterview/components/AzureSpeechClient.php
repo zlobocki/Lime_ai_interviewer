@@ -168,21 +168,166 @@ class AzureSpeechClient
         }
 
         $voiceCandidates = self::voiceNameCandidates($voice);
-        $lastError       = ['error' => 'Azure Speech TTS failed for all voice/format attempts.'];
+        $catalogVoice    = $this->resolveCatalogVoiceName($voice);
+        if ($catalogVoice !== null) {
+            $voiceCandidates = [$catalogVoice];
+        } elseif (self::isHdVoice($voice)) {
+            $listError = $this->voiceUnavailableMessage($voice);
+            if ($listError !== null) {
+                return $listError;
+            }
+        }
+
+        $lastError = ['error' => 'Azure Speech TTS failed for all voice/format attempts.'];
+        $attempts  = [];
 
         foreach ($voiceCandidates as $candidateVoice) {
             foreach (self::outputFormatsForVoice($candidateVoice) as $outputFormat) {
-                $locale = self::localeFromVoiceName($candidateVoice);
+                $locale = self::localeTagFromVoiceName($candidateVoice);
                 $result = $this->requestSynthesisOnce($text, $locale, $candidateVoice, $outputFormat);
                 if (!isset($result['error'])) {
                     return $result;
                 }
+                $attempts[] = [
+                    'voice'        => $candidateVoice,
+                    'outputFormat' => $outputFormat,
+                    'httpCode'     => $result['httpCode'] ?? null,
+                    'error'        => $result['error'],
+                ];
                 $lastError = $result;
             }
         }
 
+        $lastError['attempts'] = $attempts;
+
         return $lastError;
     }
+
+    /**
+     * Fetch neural voices available in the configured region (cached per region).
+     *
+     * @return array{ voices: list<array<string, mixed>> }|array{ error: string }
+     */
+    public function listVoices(): array
+    {
+        if ($this->apiKey === '' || $this->region === '') {
+            return ['error' => 'Azure Speech is not configured.'];
+        }
+
+        if (isset(self::$voiceListCache[$this->region])) {
+            return ['voices' => self::$voiceListCache[$this->region]];
+        }
+
+        $url = sprintf(
+            'https://%s.tts.speech.microsoft.com/cognitiveservices/voices/list',
+            $this->region
+        );
+
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['error' => 'cURL initialisation failed'];
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPGET        => true,
+            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_HTTPHEADER     => [
+                'Ocp-Apim-Subscription-Key: ' . $this->apiKey,
+                'User-Agent: LimeSurvey-AIInterview/1.21',
+            ],
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ]);
+
+        $response  = curl_exec($ch);
+        $httpCode  = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlError !== '') {
+            return ['error' => 'Network error fetching Azure voice list: ' . $curlError];
+        }
+
+        if ($response === false || $response === '') {
+            return ['error' => 'Empty response from Azure voice list (HTTP ' . $httpCode . ')'];
+        }
+
+        if ($httpCode < 200 || $httpCode >= 300) {
+            return ['error' => 'Azure voice list failed (HTTP ' . $httpCode . '): '
+                . trim(substr((string) $response, 0, 300))];
+        }
+
+        $data = json_decode($response, true);
+        if (!is_array($data)) {
+            return ['error' => 'Invalid JSON from Azure voice list.'];
+        }
+
+        self::$voiceListCache[$this->region] = $data;
+
+        return ['voices' => $data];
+    }
+
+    /**
+     * Match a configured voice name to Azure's catalog ShortName (case-insensitive).
+     */
+    public function resolveCatalogVoiceName(string $voice): ?string
+    {
+        $voice = trim($voice);
+        if ($voice === '') {
+            return null;
+        }
+
+        $listResult = $this->listVoices();
+        if (isset($listResult['error']) || !isset($listResult['voices'])) {
+            return null;
+        }
+
+        $candidates = self::voiceNameCandidates($voice);
+        foreach ($listResult['voices'] as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $shortName = trim((string) ($entry['ShortName'] ?? ''));
+            if ($shortName === '') {
+                continue;
+            }
+            foreach ($candidates as $candidate) {
+                if (strcasecmp($shortName, $candidate) === 0) {
+                    return $shortName;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{ error: string, voice: string }|null
+     */
+    private function voiceUnavailableMessage(string $voice): ?array
+    {
+        $listResult = $this->listVoices();
+        if (isset($listResult['error']) || !isset($listResult['voices'])) {
+            return null;
+        }
+
+        if ($this->resolveCatalogVoiceName($voice) !== null) {
+            return null;
+        }
+
+        return [
+            'error' => 'Voice "' . $voice . '" is not in the Azure voice catalog for region "'
+                . $this->region . '". Dragon HD voices need a standard (S0) Speech resource; '
+                . 'the free F0 tier and some EU endpoints do not expose them. '
+                . 'Try en-GB-SoniaNeural, or create/use a Speech resource in eastus / westeurope (S0).',
+            'voice' => $voice,
+        ];
+    }
+
+    /** @var array<string, list<array<string, mixed>>> */
+    private static $voiceListCache = [];
 
     /**
      * Normalize Azure voice identifier (trim, unify locale prefix casing).
@@ -222,6 +367,21 @@ class AzureSpeechClient
         $alternate  = self::alternateVoiceLocaleCase($normalized);
         $candidates = [];
 
+        // Azure HD catalog entries use lowercase region subtags (en-us-Nova:...).
+        if (self::isHdVoice($voice)) {
+            if ($alternate !== null) {
+                $candidates[] = $alternate;
+            }
+            if ($normalized !== '' && !in_array($normalized, $candidates, true)) {
+                $candidates[] = $normalized;
+            }
+            if ($voice !== '' && !in_array($voice, $candidates, true)) {
+                $candidates[] = trim($voice);
+            }
+
+            return $candidates !== [] ? $candidates : [$voice];
+        }
+
         if ($normalized !== '') {
             $candidates[] = $normalized;
         }
@@ -246,14 +406,27 @@ class AzureSpeechClient
     {
         if (self::isHdVoice($voice)) {
             return [
+                'audio-16khz-128kbitrate-mono-mp3',
                 'audio-24khz-160kbitrate-mono-mp3',
                 'audio-48khz-192kbitrate-mono-mp3',
                 'audio-24khz-96kbitrate-mono-mp3',
-                'audio-16khz-128kbitrate-mono-mp3',
+                'riff-24khz-16bit-mono-pcm',
             ];
         }
 
         return ['audio-16khz-128kbitrate-mono-mp3'];
+    }
+
+    public static function contentTypeForFormat(string $outputFormat): string
+    {
+        if (strpos($outputFormat, 'mp3') !== false) {
+            return 'audio/mpeg';
+        }
+        if (strpos($outputFormat, 'riff') !== false || strpos($outputFormat, 'pcm') !== false) {
+            return 'audio/wav';
+        }
+
+        return 'audio/mpeg';
     }
 
     /**
@@ -321,7 +494,7 @@ class AzureSpeechClient
 
         return [
             'audio'        => $response,
-            'contentType'  => 'audio/mpeg',
+            'contentType'  => self::contentTypeForFormat($outputFormat),
             'voice'        => $voice,
             'locale'       => $locale,
             'outputFormat' => $outputFormat,
@@ -350,6 +523,22 @@ class AzureSpeechClient
     }
 
     /**
+     * Locale tag for SSML xml:lang — preserve catalog casing for HD voices (en-us vs en-US).
+     */
+    public static function localeTagFromVoiceName(string $voice): string
+    {
+        if (preg_match('/^([a-zA-Z]{2})-([a-zA-Z]{2})/', $voice, $matches)) {
+            if (self::isHdVoice($voice)) {
+                return strtolower($matches[1]) . '-' . strtolower($matches[2]);
+            }
+
+            return self::localeFromVoiceName($voice);
+        }
+
+        return 'en-US';
+    }
+
+    /**
      * Map short language codes from the plugin to Azure locales (STT).
      */
     public static function localeFromLanguage(string $language): string
@@ -367,10 +556,11 @@ class AzureSpeechClient
     {
         $escaped   = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $safeVoice = preg_replace('/[^a-zA-Z0-9\-:]/', '', $voice);
+        $xmlLang   = preg_replace('/[^a-zA-Z\-]/', '', $locale);
 
         return '<?xml version="1.0" encoding="UTF-8"?>'
             . '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="'
-            . $this->sanitizeLocale($locale) . '">'
+            . ($xmlLang !== '' ? $xmlLang : 'en-US') . '">'
             . '<voice name="' . $safeVoice . '">'
             . $escaped
             . '</voice></speak>';
