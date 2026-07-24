@@ -40,7 +40,8 @@
             reviewPrompt: 'Review your answer, edit if needed, then tap Send.',
             sendAnswer: 'Send answer',
             livePreviewLabel: 'What you say will appear here live.',
-            allieSpeaking: 'Allie is speaking…'
+            allieSpeaking: 'Allie is speaking…',
+            ttsFailed: 'Allie could not speak aloud:'
         },
         pl: {
             preparing: 'Przygotowuję wywiad…',
@@ -76,7 +77,8 @@
             reviewPrompt: 'Sprawdź odpowiedź, popraw jeśli trzeba, potem kliknij Wyślij.',
             sendAnswer: 'Wyślij odpowiedź',
             livePreviewLabel: 'To, co mówisz, pojawi się tutaj na żywo.',
-            allieSpeaking: 'Allie mówi…'
+            allieSpeaking: 'Allie mówi…',
+            ttsFailed: 'Allie nie mogła odczytać na głos:'
         }
     };
 
@@ -653,8 +655,11 @@
                 }
                 var blob = new Blob([bytes], { type: data.contentType || 'audio/mpeg' });
                 return playTtsBlob(blob);
-            }).catch(function () {
+            }).catch(function (err) {
                 isSpeaking = false;
+                var msg = (err && err.message) ? err.message : t(language, 'errorGeneric');
+                console.error('AIInterview TTS failed:', msg);
+                showError(t(language, 'ttsFailed') + ' ' + msg);
                 return Promise.resolve();
             });
         }

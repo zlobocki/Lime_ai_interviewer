@@ -21,7 +21,7 @@
  *
  * @author      AI Interview Plugin
  * @license     GPL v2
- * @version     1.21.1
+ * @version     1.21.2
  * @since       LimeSurvey 6.0
  */
 
@@ -1642,6 +1642,9 @@ HTML;
             'azure_speech_set'    => $speechKey !== '',
             'azure_speech_region' => $speechRegion ?: 'westeurope',
             'transcribe_url'      => $this->getPluginDirectUrl('voiceTranscribe'),
+            'synthesize_url'      => $this->getPluginDirectUrl('voiceSynthesize'),
+            'voice_en'            => trim((string) $this->get('azure_tts_voice_en', null, null, 'en-US-Nova:DragonHDLatestNeural')),
+            'voice_pl'            => trim((string) $this->get('azure_tts_voice_pl', null, null, 'pl-PL-ZofiaNeural')),
         ]);
     }
 
@@ -1658,8 +1661,9 @@ HTML;
             return;
         }
 
-        $transcribeUrl = $this->getPluginDirectUrl('voiceTranscribe');
-        $statusUrl     = $this->getPluginDirectUrl('voiceTestStatus');
+        $transcribeUrl  = $this->getPluginDirectUrl('voiceTranscribe');
+        $synthesizeUrl  = $this->getPluginDirectUrl('voiceSynthesize');
+        $statusUrl      = $this->getPluginDirectUrl('voiceTestStatus');
 
         $assetPath = dirname(__FILE__) . '/assets';
         $assetUrl  = Yii::app()->assetManager->publish($assetPath);
@@ -1667,8 +1671,9 @@ HTML;
         $csrfToken = Yii::app()->request->getCsrfToken();
         $eCsrf     = htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8');
         $jsConfig  = json_encode([
-            'transcribeUrl' => $transcribeUrl,
-            'statusUrl'     => $statusUrl,
+            'transcribeUrl'  => $transcribeUrl,
+            'synthesizeUrl'  => $synthesizeUrl,
+            'statusUrl'      => $statusUrl,
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
         http_response_code(200);
@@ -1688,8 +1693,12 @@ HTML;
 <body>
     <main class="voice-test">
         <h1>AI Interview - Voice Test</h1>
-        <p class="voice-test-lead">Record a short clip to verify Azure Speech (EU) transcription. Admin only.</p>
+        <p class="voice-test-lead">Admin tools to verify Azure Speech transcription and Allie text-to-speech.</p>
         <div id="voice-test-status" class="voice-test-banner" role="status"></div>
+
+        <section class="voice-test-section">
+            <h2>Speech-to-text (microphone)</h2>
+            <p class="voice-test-hint">Record a short clip to verify transcription.</p>
         <label for="voice-test-language">Language</label>
         <select id="voice-test-language">
             <option value="en">English (en-GB)</option>
@@ -1701,8 +1710,24 @@ HTML;
         </div>
         <p class="voice-test-hint">Microphone level:</p>
         <meter id="voice-test-meter" min="0" max="1" low="0.1" high="0.7" optimum="0.5" value="0"></meter>
-        <h2>Transcription</h2>
+        <h3>Transcription result</h3>
         <pre id="voice-test-result" class="voice-test-result">(record something to see text here)</pre>
+        </section>
+
+        <section class="voice-test-section">
+            <h2>Text-to-speech (Allie voice)</h2>
+            <p class="voice-test-hint">Tests the same Azure TTS endpoint the interview uses. Any error from Azure is shown below.</p>
+            <label for="voice-test-tts-voice">Azure voice name</label>
+            <input type="text" id="voice-test-tts-voice" class="voice-test-text-input"
+                   placeholder="en-US-Nova:DragonHDLatestNeural" spellcheck="false" />
+            <label for="voice-test-tts-text">Sample text</label>
+            <textarea id="voice-test-tts-text" class="voice-test-textarea" rows="3">Hello, I am Allie. This is a voice test.</textarea>
+            <div class="voice-test-controls">
+                <button type="button" id="voice-test-tts-btn" class="voice-test-btn">Synthesize and play</button>
+            </div>
+            <pre id="voice-test-tts-result" class="voice-test-result">(click Synthesize and play)</pre>
+            <audio id="voice-test-tts-audio" controls class="voice-test-audio" style="display:none;"></audio>
+        </section>
         <input type="hidden" id="voice-test-csrf" name="YII_CSRF_TOKEN" value="{$eCsrf}">
     </main>
     <script>
@@ -1827,12 +1852,26 @@ HTML;
             return;
         }
 
+        $voiceOverride = isset($_POST['voice']) ? trim((string) $_POST['voice']) : '';
+
+        if ($voiceOverride !== '' && $this->isPluginAdmin()) {
+            $voice = AzureSpeechClient::normalizeVoiceName($voiceOverride);
+        } else {
+            $voice = $this->resolveTtsVoice($sgqa, $language);
+        }
+
         $client = $this->createAzureSpeechClient();
-        $voice  = $this->resolveTtsVoice($sgqa, $language);
         $result = $client->synthesizeSpeech($text, $language, $voice);
 
         if (isset($result['error'])) {
-            $this->sendJsonResponse(['error' => $result['error']], 502);
+            $payload = ['error' => $result['error'], 'voice' => $voice];
+            if (isset($result['httpCode'])) {
+                $payload['httpCode'] = $result['httpCode'];
+            }
+            if ($this->isPluginAdmin() && isset($result['azureMessage'])) {
+                $payload['azureMessage'] = $result['azureMessage'];
+            }
+            $this->sendJsonResponse($payload, 502);
             return;
         }
 
@@ -1888,7 +1927,7 @@ HTML;
             }
         }
 
-        return $voice !== '' ? $voice : $fallback;
+        return AzureSpeechClient::normalizeVoiceName($voice !== '' ? $voice : $fallback);
     }
 
     private function isPluginAdmin(): bool

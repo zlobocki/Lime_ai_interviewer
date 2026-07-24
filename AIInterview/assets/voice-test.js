@@ -8,6 +8,11 @@
     var stopBtn = document.getElementById('voice-test-stop');
     var langSelect = document.getElementById('voice-test-language');
     var meter = document.getElementById('voice-test-meter');
+    var ttsVoiceInput = document.getElementById('voice-test-tts-voice');
+    var ttsTextInput = document.getElementById('voice-test-tts-text');
+    var ttsBtn = document.getElementById('voice-test-tts-btn');
+    var ttsResultEl = document.getElementById('voice-test-tts-result');
+    var ttsAudioEl = document.getElementById('voice-test-tts-audio');
 
     var mediaRecorder = null;
     var mediaStream = null;
@@ -190,7 +195,14 @@
                 if (!data.azure_speech_set) {
                     setStatus('Azure Speech key is not configured in plugin settings.', true);
                 } else {
-                    setStatus('Azure Speech configured (region: ' + (data.azure_speech_region || 'westeurope') + ').', false);
+                    var line = 'Azure Speech configured (region: ' + (data.azure_speech_region || 'westeurope') + ').';
+                    if (data.voice_en) {
+                        line += ' English voice: ' + data.voice_en + '.';
+                    }
+                    setStatus(line, false);
+                    if (ttsVoiceInput && !ttsVoiceInput.value && data.voice_en) {
+                        ttsVoiceInput.value = data.voice_en;
+                    }
                 }
             })
             .catch(function (err) {
@@ -309,6 +321,92 @@
             .catch(function (err) {
                 setStatus('Transcription request failed: ' + err.message, true);
             });
+    }
+
+    function synthesizeTest() {
+        if (!cfg.synthesizeUrl) {
+            setStatus('Synthesize URL not configured.', true);
+            return;
+        }
+
+        var voice = ttsVoiceInput ? ttsVoiceInput.value.trim() : '';
+        var text = ttsTextInput ? ttsTextInput.value.trim() : '';
+        if (!text) {
+            setStatus('Enter sample text for TTS.', true);
+            return;
+        }
+
+        if (ttsBtn) ttsBtn.disabled = true;
+        if (ttsResultEl) ttsResultEl.textContent = 'Calling Azure TTS…';
+        setStatus('Synthesizing speech…', false);
+
+        var form = new FormData();
+        form.append('text', text);
+        form.append('language', 'en');
+        form.append('surveyId', '0');
+        if (voice) {
+            form.append('voice', voice);
+        }
+
+        var csrf = getCsrfToken();
+        if (csrf) {
+            form.append('YII_CSRF_TOKEN', csrf);
+        }
+
+        fetch(cfg.synthesizeUrl, {
+            method: 'POST',
+            body: form,
+            credentials: 'same-origin',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(parseJsonResponse)
+            .then(function (result) {
+                var data = result.data;
+                if (!result.ok || data.error) {
+                    var errLine = data.error || ('Server error (HTTP ' + result.ok + ')');
+                    if (data.httpCode) {
+                        errLine += '\n\nHTTP ' + data.httpCode;
+                    }
+                    if (data.azureMessage) {
+                        errLine += '\nAzure: ' + data.azureMessage;
+                    }
+                    if (data.voice) {
+                        errLine += '\nVoice tried: ' + data.voice;
+                    }
+                    if (ttsResultEl) ttsResultEl.textContent = errLine;
+                    setStatus('TTS failed — see details below.', true);
+                    return;
+                }
+
+                var info = 'OK — voice: ' + (data.voice || voice || '(default)');
+                if (data.locale) {
+                    info += ', locale: ' + data.locale;
+                }
+                if (ttsResultEl) ttsResultEl.textContent = info;
+
+                if (data.audioBase64 && ttsAudioEl) {
+                    ttsAudioEl.src = 'data:' + (data.contentType || 'audio/mpeg') + ';base64,' + data.audioBase64;
+                    ttsAudioEl.style.display = 'block';
+                    return ttsAudioEl.play().catch(function () {
+                        setStatus('Audio generated but playback was blocked. Use the player below.', true);
+                    });
+                }
+
+                setStatus('TTS succeeded.', false);
+            })
+            .catch(function (err) {
+                if (ttsResultEl) ttsResultEl.textContent = err.message;
+                setStatus('TTS request failed: ' + err.message, true);
+            })
+            .then(function () {
+                if (ttsBtn) ttsBtn.disabled = false;
+            });
+    }
+
+    if (ttsBtn) {
+        ttsBtn.addEventListener('click', synthesizeTest);
     }
 
     fetchStatus();

@@ -167,8 +167,61 @@ class AzureSpeechClient
         if ($voice === '') {
             $voice = $this->voiceForLanguage($language);
         }
+        $voice  = self::normalizeVoiceName($voice);
         $locale = self::localeFromVoiceName($voice);
-        $ssml   = $this->buildSsml($text, $locale, $voice);
+
+        $result = $this->requestSynthesis($text, $locale, $voice);
+        if (!isset($result['error'])) {
+            return $result;
+        }
+
+        // Azure docs list HD voices with lowercase locale prefix (en-us-…); retry once.
+        $alternate = self::alternateVoiceLocaleCase($voice);
+        if ($alternate !== null && $alternate !== $voice) {
+            $retry = $this->requestSynthesis($text, self::localeFromVoiceName($alternate), $alternate);
+            if (!isset($retry['error'])) {
+                return $retry;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Normalize Azure voice identifier (trim, unify locale prefix casing).
+     */
+    public static function normalizeVoiceName(string $voice): string
+    {
+        $voice = trim($voice);
+        if ($voice === '') {
+            return '';
+        }
+
+        if (preg_match('/^([a-zA-Z]{2})-([a-zA-Z]{2})(.*)$/', $voice, $matches)) {
+            return strtolower($matches[1]) . '-' . strtoupper($matches[2]) . $matches[3];
+        }
+
+        return $voice;
+    }
+
+    /**
+     * Alternate locale casing used in some Azure HD voice catalog entries.
+     */
+    public static function alternateVoiceLocaleCase(string $voice): ?string
+    {
+        if (!preg_match('/^([a-zA-Z]{2})-([a-zA-Z]{2})(.*)$/', $voice, $matches)) {
+            return null;
+        }
+
+        return strtolower($matches[1]) . '-' . strtolower($matches[2]) . $matches[3];
+    }
+
+    /**
+     * @return array{ audio: string, contentType: string, voice: string, locale: string }|array{ error: string, httpCode?: int, azureMessage?: string }
+     */
+    private function requestSynthesis(string $text, string $locale, string $voice): array
+    {
+        $ssml = $this->buildSsml($text, $locale, $voice);
 
         $url = sprintf('https://%s.tts.speech.microsoft.com/cognitiveservices/v1', $this->region);
 
@@ -207,8 +260,12 @@ class AzureSpeechClient
         }
 
         if ($httpCode < 200 || $httpCode >= 300) {
-            $snippet = trim(substr((string) $response, 0, 200));
-            return ['error' => 'Azure Speech TTS failed (HTTP ' . $httpCode . '): ' . $snippet];
+            $snippet = trim(substr((string) $response, 0, 500));
+            return [
+                'error'        => 'Azure Speech TTS failed (HTTP ' . $httpCode . '): ' . $snippet,
+                'httpCode'     => $httpCode,
+                'azureMessage' => $snippet,
+            ];
         }
 
         return [
@@ -233,8 +290,8 @@ class AzureSpeechClient
      */
     public static function localeFromVoiceName(string $voice): string
     {
-        if (preg_match('/^([a-z]{2}-[A-Z]{2})/', $voice, $matches)) {
-            return $matches[1];
+        if (preg_match('/^([a-zA-Z]{2})-([a-zA-Z]{2})/', $voice, $matches)) {
+            return strtolower($matches[1]) . '-' . strtoupper($matches[2]);
         }
 
         return 'en-US';

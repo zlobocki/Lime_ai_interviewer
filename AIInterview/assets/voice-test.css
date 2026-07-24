@@ -73,3 +73,35 @@ meter {
     min-height: 4rem;
     white-space: pre-wrap;
 }
+
+.voice-test-section {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #e2e8f0;
+}
+
+.voice-test-section h2 {
+    margin-top: 0;
+}
+
+.voice-test-text-input,
+.voice-test-textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0.35rem 0 1rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font: inherit;
+}
+
+.voice-test-text-input {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.voice-test-audio {
+    display: block;
+    width: 100%;
+    margin-top: 1rem;
+}
